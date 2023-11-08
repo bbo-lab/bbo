@@ -181,8 +181,8 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
 
         for ln in labels["labels"]:
             for fr_idx in labels["labels"][ln]:
-                target_cam_mask = target_labels["labels"][ln][fr_idx] != 0
-                source_cam_mask = labels["labels"][ln][fr_idx] != 0
+                target_cam_mask = target_labels["labeler"][ln][fr_idx] != target_labels["labeler_list"].index("_unmarked")
+                source_cam_mask = labels["labeler"][ln][fr_idx] != labels["labeler_list"].index("_unmarked")
                 source_newer_mask = target_labels["point_times"][ln][fr_idx] < labels["point_times"][ln][fr_idx]
 
                 replace_mask = source_cam_mask & source_newer_mask
