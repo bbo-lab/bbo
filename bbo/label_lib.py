@@ -66,7 +66,14 @@ def load(file_path):
 
     if file_path.with_suffix(".yml").is_file():
         file_path = file_path.with_suffix(".yml")
-        labels = load_raw_yaml(file_path)
+        try:
+            with open(file_path.as_posix(), 'r') as f:
+                labels = read_label_yaml(f)
+        except Exception as e:
+            # Fall back to very slow pyyaml reader
+            print("WARNING: Fallback to pyYAML")
+            print(e)
+            labels = load_raw_yaml(file_path)
     elif file_path.with_suffix(".npz").is_file():
         file_path = file_path.with_suffix(".npz")
         labels = np.load(file_path, allow_pickle=True)["arr_0"][()]
@@ -108,7 +115,7 @@ def save(file_path, labels, yml_only=False):
         np.savez(file_path.with_suffix(".npz").as_posix(), labels)
 
     with open(file_path.with_suffix(".yml").as_posix(), 'w') as f:
-        yaml.dump(labels, f, default_flow_style=None)
+        write_label_yaml(f, labels)
 
 
 def get_labels(labels):
@@ -404,3 +411,152 @@ def to_pandas(labels):
                                                    ["x", "y"])])
 
     return pd.DataFrame(data, index=time_base, columns=columns)
+
+
+# pyyaml is WAY too slow for large files
+def write_label_yaml(file_handle, labels):
+    f = file_handle
+    f.write("labeler:\n")
+    for ln in labels["labeler"]:
+        ln_dict = labels["labeler"][ln]
+        f.write("  ")
+        f.write(ln)
+        if len(ln_dict)==0:
+            f.write(": {}\n")
+            continue
+        f.write(":\n")
+        for fr_idx in ln_dict:
+            fr_list = ln_dict[fr_idx]
+            f.write("    ")
+            f.write(str(fr_idx))
+            f.write(": [")
+            f.write(str(fr_list[0]))
+            f.write(", ")
+            f.write(str(fr_list[1]))
+            f.write("]\n")
+
+    f.write("labeler_list: [")
+    f.write(", ".join(labels["labeler_list"]))
+    f.write("]\n")
+
+    f.write("labels:\n")
+    for ln in labels["labels"]:
+        ln_dict = labels["labels"][ln]
+        f.write("  ")
+        f.write(ln)
+        if len(ln_dict)==0:
+            f.write(": {}\n")
+            continue
+        f.write(":\n")
+        for fr_idx in ln_dict:
+            fr_dict = ln_dict[fr_idx]
+            f.write("    ")
+            f.write(str(fr_idx))
+            f.write(":\n")
+            for row in fr_dict:
+                f.write("    - [")
+                if np.isnan(row[0]):
+                    f.write(".nan")
+                else:
+                    f.write(str(row[0]))
+                f.write(", ")
+                if np.isnan(row[0]):
+                    f.write(".nan")
+                else:
+                    f.write(str(row[1]))
+                f.write("]\n")
+
+    f.write("point_times:\n")
+    for ln in labels["point_times"]:
+        ln_dict = labels["point_times"][ln]
+        f.write("  ")
+        f.write(ln)
+        if len(ln_dict)==0:
+            f.write(": {}\n")
+            continue
+        f.write(":\n")
+        for fr_idx in ln_dict:
+            fr_list = ln_dict[fr_idx]
+            f.write("    ")
+            f.write(str(fr_idx))
+            f.write(": [")
+            f.write(str(fr_list[0]))
+            f.write(", ")
+            f.write(str(fr_list[1]))
+            f.write("]\n")
+
+    f.write("version: ")
+    f.write(str(labels["version"]))
+    f.write("\n")
+
+
+def read_label_yaml(file):
+    labels = {}
+    current_key = None
+    current_label = None
+    current_frame = None
+    in_line = False
+    full_line = ""
+    for line in file.readlines():
+        try:
+            if in_line:
+                full_line += line.strip()
+
+                if current_key == "labeler_list":
+                    if full_line.endswith("]"):
+                        labels[current_key] = [l.strip() for l in full_line[1:-1].split(",")]
+                        in_line = False
+                    continue
+                else:
+                    raise Exception("Lines should only overflow in labeler_list", line)
+
+            if not line.startswith(" "):
+                line_parts = line.strip().split(" ")
+                current_key = line_parts[0][:-1]
+                labels[current_key] = {}
+
+                current_line = "".join(line_parts[1:]).strip()
+                if current_key == "version":
+                    labels[current_key] = float(current_line)
+                elif current_key == "labeler_list":
+                    if current_line.endswith("]"):
+                        labels[current_key] = [l.strip() for l in current_line[1:-1].split(",")]
+                    else:
+                        full_line = current_line
+                        in_line = True
+            elif line.startswith("  ") and line[2] != " ":
+                # This can only happen for labeler, point_times, labels and mean the same in all cases
+                current_label = line.strip()[:-1]
+                labels[current_key][current_label] = {}
+            elif line.startswith("    ") and line[4] != " ":
+                line_parts = line.strip().split(" ")
+                if line_parts[0] != "-":
+                    current_frame = int(line_parts[0][:-1])
+
+                if current_key == "labeler":
+                    labels[current_key][current_label][current_frame] = np.array(
+                        [int(line_parts[1][1:-1]), int(line_parts[2][0:-1])])
+                elif current_key == "point_times":
+                    labels[current_key][current_label][current_frame] = np.array(
+                        [float(line_parts[1][1:-1]), float(line_parts[2][0:-1])])
+                elif current_key == "labels":
+                    if len(line_parts) == 1:
+                        labels[current_key][current_label][current_frame] = np.zeros((0, 2))
+                    elif line_parts[0] == "-":
+                        coords = [line_parts[1][1:-1], line_parts[2][0:-1]]
+                        coords = [np.nan if c == ".nan" else float(c) for c in coords]
+                        labels[current_key][current_label][current_frame] = np.vstack(
+                            (labels[current_key][current_label][current_frame],
+                             np.array([coords])))
+                    else:
+                        raise Exception("We should never get here", line)
+        except Exception as e:
+            print("Current key:", current_key)
+            print("Current label:", current_label)
+            print("Current frame:", current_frame)
+            print("In line:", in_line)
+            print(line)
+            print(line_parts)
+            raise e
+
+    return labels
