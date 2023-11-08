@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import yaml
 import sys
@@ -8,6 +9,7 @@ def get_custom_replace_dict():
 
     # Create config file if it doesn't exist
     if not config_file.is_file():
+        os.makedirs(Path("~/.bbo").expanduser().resolve(), exist_ok=True)
         with open(config_file, "w"):
             pass
 
