@@ -42,7 +42,7 @@ def get_default_replace_dict():
                     break
             except OSError as e:
                 if e.errno == 116:  # Stale file handle, sometimes happens with SOMA
-                    replace_dict["storage"] = path
+                    default_replace_dict["storage"] = path
     elif sys.platform.startswith('win') or sys.platform.startswith('cygwin'):
         default_replace_dict["storage"] = "s:/"
     else:
