@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import numpy as np
 import yaml
-
+import itertools
 from bbo.exceptions import NoDataException
 
 
@@ -168,7 +168,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
 
     # Load data from labels files
     if labels_files is not None:
-        labels_list = [load(lf.as_posix()) for lf in labels_files]
+        labels_list = [lf if isinstance(lf, dict) else load(lf.as_posix()) for lf in labels_files]
 
     make_global_labeler_list(labels_list)
 
@@ -181,7 +181,8 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
 
         for ln in labels["labels"]:
             for fr_idx in labels["labels"][ln]:
-                target_cam_mask = target_labels["labeler"][ln][fr_idx] != target_labels["labeler_list"].index("_unmarked")
+                target_cam_mask = target_labels["labeler"][ln][fr_idx] != target_labels["labeler_list"].index(
+                    "_unmarked")
                 source_cam_mask = labels["labeler"][ln][fr_idx] != labels["labeler_list"].index("_unmarked")
                 source_newer_mask = target_labels["point_times"][ln][fr_idx] < labels["point_times"][ln][fr_idx]
 
@@ -215,7 +216,7 @@ def combine_cams(labels_list: list, target_file=None, yml_only=False):
             labels_list[i_l] = Path(label)
         if isinstance(label, Path):
             labels_list[i_l] = labels_list[i_l].expanduser().resolve()
-        labels_list[i_l] = load(labels_list[i_l].as_posix())
+            labels_list[i_l] = load(labels_list[i_l].as_posix())
 
     make_global_labeler_list(labels_list)
 
@@ -341,6 +342,15 @@ def to_array(labels,
              time_bases=None,  # Rearrange after these time bases for cams
              label_identity=None  # Treat as identical labels (nanmean if both are labeled)
              ):
+    print("DEPRECATED: Use to_numpy")
+    return to_numpy(labels, extract_frame_idxs, extract_labels, time_bases, label_identity)
+
+
+def to_numpy(labels,
+             extract_frame_idxs=None, extract_labels=None,  # Extract only these parts of data
+             time_bases=None,  # Rearrange after these time bases for cams
+             label_identity=None  # Treat as identical labels (nanmean if both are labeled)
+             ):
     cams_n = get_n_cams(labels)
 
     if extract_frame_idxs is None:
@@ -348,10 +358,11 @@ def to_array(labels,
 
     if extract_labels is None:
         extract_labels = get_labels(labels)
-    time_base = np.unique(np.concatenate(time_bases, axis=0))
 
     if time_bases is None:
-        time_bases = [np.arange(len(extract_frame_idxs)) for _ in range(cams_n)]
+        time_bases = [extract_frame_idxs for _ in range(cams_n)]
+
+    time_base = np.unique(np.concatenate(time_bases, axis=0))
 
     # cams x frames x landmarks x pix_coords
     landmark_imcoords = np.full((cams_n, len(time_base), len(extract_labels), 2), np.nan)
@@ -379,3 +390,17 @@ def to_array(labels,
     return landmark_imcoords, time_base
 
 
+def to_pandas(labels):
+    import pandas as pd  # We don't want this as a global dependency
+    extract_frame_idxs = get_labeled_frame_idxs(labels)
+    label_names = get_labels(labels)
+    data, time_base = to_numpy(labels)
+    data_shape = data.shape
+    data = data.transpose([1, 0, 2, 3]).reshape((data_shape[1], -1))
+
+    columns = list([f"{s}_{co}"
+                    for s, co in itertools.product([f"c{c:02d}_{l}"
+                                                    for c, l in itertools.product(range(data_shape[0]), label_names)],
+                                                   ["x", "y"])])
+
+    return pd.DataFrame(data, index=time_base, columns=columns)
