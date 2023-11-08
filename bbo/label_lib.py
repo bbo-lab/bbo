@@ -36,8 +36,6 @@ def update(labels, labeler="_unknown"):
             if f_idx not in labels["fr_times"]:
                 labels["fr_times"][f_idx] = 0
 
-    data_shape = get_data_shape(labels)
-
     if labels["version"] <= 0.3:
         labeler = {}
         point_times = {}
@@ -45,6 +43,7 @@ def update(labels, labeler="_unknown"):
             labeler[ln] = {}
             point_times[ln] = {}
             for fr_idx in labels['labels'][ln]:
+                data_shape = get_data_shape(labels)
                 labeler[ln][fr_idx] = np.ones(data_shape[0], dtype=np.uint16) * labels['labeler'][fr_idx]
                 nanmask = np.any(np.isnan(labels["labels"][ln][fr_idx]), axis=1)
                 labeler[ln][fr_idx][nanmask] = 0
