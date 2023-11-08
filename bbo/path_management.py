@@ -34,10 +34,17 @@ def get_default_replace_dict():
             "/media/smb/soma-fs.ad01.caesar.de/bbo/",
             "/media/smb/soma.ad01.caesar.de/bbo/"
         ]:
-            if Path(path).is_dir():
-                default_replace_dict["storage"] = path
+            try:
+                if Path(path).is_dir():
+                    default_replace_dict["storage"] = path
+                    break
+            except OSError as e:
+                if e.errno == 116:  # Stale file handle, sometimes happens with SOMA
+                    replace_dict["storage"] = path
     elif sys.platform.startswith('win') or sys.platform.startswith('cygwin'):
         default_replace_dict["storage"] = "s:/"
+    else:
+        print("Warning unknown platform", sys.platform, file=sys.stderr)
 
     return default_replace_dict
 
