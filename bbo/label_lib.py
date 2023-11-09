@@ -430,9 +430,10 @@ def write_label_yaml(file_handle, labels):
             f.write("    ")
             f.write(str(fr_idx))
             f.write(": [")
-            f.write(str(fr_list[0]))
-            f.write(", ")
-            f.write(str(fr_list[1]))
+            if isinstance(fr_list, np.ndarray):
+                f.write(",".join([str(f) for f in fr_list]))
+            else:
+                f.write(str(fr_list))
             f.write("]\n")
 
     f.write("labeler_list: [")
@@ -476,13 +477,14 @@ def write_label_yaml(file_handle, labels):
             continue
         f.write(":\n")
         for fr_idx in ln_dict:
-            fr_list = ln_dict[fr_idx]
+            t_list = ln_dict[fr_idx]
             f.write("    ")
             f.write(str(fr_idx))
             f.write(": [")
-            f.write(str(fr_list[0]))
-            f.write(", ")
-            f.write(str(fr_list[1]))
+            if isinstance(t_list, np.ndarray):
+                f.write(",".join([str(t) for t in t_list]))
+            else:
+                f.write(str(t_list))
             f.write("]\n")
 
     f.write("version: ")
@@ -535,10 +537,10 @@ def read_label_yaml(file):
 
                 if current_key == "labeler":
                     labels[current_key][current_label][current_frame] = np.array(
-                        [int(line_parts[1][1:-1]), int(line_parts[2][0:-1])])
+                        [int(line_parts[i][1:-1]) for i in range(1, len(line_parts))])
                 elif current_key == "point_times":
                     labels[current_key][current_label][current_frame] = np.array(
-                        [float(line_parts[1][1:-1]), float(line_parts[2][0:-1])])
+                        [float(line_parts[i][1:-1]) for i in range(1, len(line_parts))])
                 elif current_key == "labels":
                     if len(line_parts) == 1:
                         labels[current_key][current_label][current_frame] = np.zeros((0, 2))
