@@ -4,7 +4,7 @@ import numpy as np
 import yaml
 import itertools
 from bbo.exceptions import NoDataException
-
+import re
 
 def ndarray_representer(dumper: yaml.Dumper, array: np.ndarray) -> yaml.Node:
     return dumper.represent_list(array.tolist())
@@ -431,7 +431,7 @@ def write_label_yaml(file_handle, labels):
             f.write(str(fr_idx))
             f.write(": [")
             if isinstance(fr_list, np.ndarray):
-                f.write(",".join([str(f) for f in fr_list]))
+                f.write(", ".join([str(f) for f in fr_list]))
             else:
                 f.write(str(fr_list))
             f.write("]\n")
@@ -482,7 +482,7 @@ def write_label_yaml(file_handle, labels):
             f.write(str(fr_idx))
             f.write(": [")
             if isinstance(t_list, np.ndarray):
-                f.write(",".join([str(t) for t in t_list]))
+                f.write(", ".join([str(t) for t in t_list]))
             else:
                 f.write(str(t_list))
             f.write("]\n")
@@ -499,6 +499,10 @@ def read_label_yaml(file):
     current_frame = None
     in_line = False
     full_line = ""
+
+    pattern = r"\d+(?:\.\d+)?"
+    re_key_numlist = re.compile(pattern)
+
     for line in file.readlines():
         try:
             if in_line:
@@ -536,11 +540,13 @@ def read_label_yaml(file):
                     current_frame = int(line_parts[0][:-1])
 
                 if current_key == "labeler":
+                    list_part = " ".join(line_parts[1:])
                     labels[current_key][current_label][current_frame] = np.array(
-                        [int(line_parts[i][1:-1]) for i in range(1, len(line_parts))])
+                        [int(x) for x in re_key_numlist.findall(list_part)])
                 elif current_key == "point_times":
+                    list_part = " ".join(line_parts[1:])
                     labels[current_key][current_label][current_frame] = np.array(
-                        [float(line_parts[i][1:-1]) for i in range(1, len(line_parts))])
+                        [float(x) for x in re_key_numlist.findall(list_part)])
                 elif current_key == "labels":
                     if len(line_parts) == 1:
                         labels[current_key][current_label][current_frame] = np.zeros((0, 2))
