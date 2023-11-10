@@ -6,6 +6,7 @@ import itertools
 from bbo.exceptions import NoDataException
 import re
 
+
 def ndarray_representer(dumper: yaml.Dumper, array: np.ndarray) -> yaml.Node:
     return dumper.represent_list(array.tolist())
 
@@ -77,7 +78,7 @@ def load(file_path):
     elif file_path.with_suffix(".npz").is_file():
         file_path = file_path.with_suffix(".npz")
         labels = np.load(file_path, allow_pickle=True)["arr_0"][()]
-        print("WARNING: Loaded deprecated npz file!")
+        print(f"WARNING: Loaded deprecated npz file! {file_path.as_posix()}")
     else:
         raise FileNotFoundError(file_path.as_posix())
 
@@ -157,45 +158,46 @@ def get_frame_labelers(labels, fr_idx, cam_idx=None):
 
 def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
     # Load data from files
-    labels_files = None
-    if isinstance(labels_list[0], str):
-        labels_files = [Path(lf).expanduser().resolve() for lf in labels_list]
-    elif isinstance(labels_list[0], Path):
-        labels_files = labels_list
-    else:
-        assert target_file is not None, "target_file is only supported if labels_list contains paths"
+    labels_list = [ll if isinstance(ll, dict) else load(ll) for ll in labels_list]
 
     # Normalize path of target_file
     if isinstance(target_file, str):
         target_file = Path(target_file).expanduser().resolve()
-
     # Add target files as first labels file if existing
     if target_file is not None and target_file.is_file():
-        labels_files.insert(0, target_file)
+        labels_list.insert(0, load(target_file))
 
-    # Load data from labels files
-    if labels_files is not None:
-        labels_list = [lf if isinstance(lf, dict) else load(lf.as_posix()) for lf in labels_files]
+    if len(labels_list) == 0:
+        return get_empty_labels()
 
     make_global_labeler_list(labels_list)
 
     # Merge file-wise
-    target_labels = labels_list[0]
-    data_shape = get_data_shape(target_labels)
+    data_shape = None
+    for labels in labels_list:
+        try:
+            data_shape = get_data_shape(labels)
+            break
+        except NoDataException:
+            pass
+    if data_shape is None:
+        return get_empty_labels()
 
-    for labels in labels_list[1:]:
+    target_labels = labels_list[0]
+    index_unmarked = target_labels["labeler_list"].index("_unmarked")  # Labeler are already matched
+    for i_labels, labels in enumerate(labels_list[1:]):
+        print(f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
+
         initialize_target(labels, target_labels, data_shape)
 
         for ln in labels["labels"]:
             for fr_idx in labels["labels"][ln]:
-                target_cam_mask = target_labels["labeler"][ln][fr_idx] != target_labels["labeler_list"].index(
-                    "_unmarked")
-                source_cam_mask = labels["labeler"][ln][fr_idx] != labels["labeler_list"].index("_unmarked")
+                source_cam_mask = labels["labeler"][ln][fr_idx] != index_unmarked
                 source_newer_mask = target_labels["point_times"][ln][fr_idx] < labels["point_times"][ln][fr_idx]
 
                 replace_mask = source_cam_mask & source_newer_mask
-
                 if not overwrite:
+                    target_cam_mask = target_labels["labeler"][ln][fr_idx] != index_unmarked
                     replace_mask &= (~target_cam_mask)
 
                 target_labels["labels"][ln][fr_idx][replace_mask] = labels["labels"][ln][fr_idx][replace_mask]
@@ -206,6 +208,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
 
     if target_file is not None:
         save(target_file, target_labels, yml_only=yml_only)
+        print(f"Saved  {target_file.as_posix()}")
     return target_labels
 
 
@@ -291,22 +294,21 @@ def sort_dictionaries(target_labels):
 
 
 def make_global_labeler_list(labels_list):
-    # This changes labeler_list in place!!!
+    # This changes labels_list in place!!!
     # Create a new global list of all labelers
-    labeler_list_all = []
-    for labels in labels_list:
-        if labels is None:
-            continue
-        if "labeler_list" in labels:
-            labeler_list_all += labels["labeler_list"]
-    labeler_list_all += ["_unknown"]
-    labeler_list_all += ["_unmarked"]
 
-    # Make unique and sorted
-    labeler_list_all = sorted(list(set(labeler_list_all)))
-    # Get specials to the front
-    labeler_list_all.pop(labeler_list_all.index("_unmarked"))
-    labeler_list_all.pop(labeler_list_all.index("_unknown"))
+    # Labeler list in first entry should be preserved to minimize changes in target file for git tracking
+    labeler_list_all = labels_list[0]["labeler_list"].copy()
+    for labels in labels_list[1:]:
+        for labeler in labels["labeler_list"]:
+            if labeler not in labeler_list_all:
+                labeler_list_all.append(labeler)
+
+    # Get specials to the front. This superseeds preserving target_file order.
+    if "_unmarked" in labeler_list_all:
+        labeler_list_all.pop(labeler_list_all.index("_unmarked"))
+    if "_unknown" in labeler_list_all:
+        labeler_list_all.pop(labeler_list_all.index("_unknown"))
     labeler_list_all.insert(0, "_unknown")
     labeler_list_all.insert(0, "_unmarked")
 
@@ -314,12 +316,12 @@ def make_global_labeler_list(labels_list):
     for labels in labels_list:
         if labels is None:
             continue
-        for ln in labels["labels"]:
-            for fr_idx in labels['labels'][ln]:
+        for ln in labels["labeler"]:
+            for fr_idx in labels['labeler'][ln]:
                 for i, labeler_idx in enumerate(labels['labeler'][ln][fr_idx]):
                     labeler = labels["labeler_list"][labeler_idx]
                     labels['labeler'][ln][fr_idx][i] = labeler_list_all.index(labeler)
-        labels["labeler_list"] = labeler_list_all
+        labels["labeler_list"] = labeler_list_all.copy()
     return labeler_list_all
 
 
@@ -421,20 +423,20 @@ def write_label_yaml(file_handle, labels):
         ln_dict = labels["labeler"][ln]
         f.write("  ")
         f.write(ln)
-        if len(ln_dict)==0:
+        if len(ln_dict) == 0:
             f.write(": {}\n")
-            continue
-        f.write(":\n")
-        for fr_idx in ln_dict:
-            fr_list = ln_dict[fr_idx]
-            f.write("    ")
-            f.write(str(fr_idx))
-            f.write(": [")
-            if isinstance(fr_list, np.ndarray):
-                f.write(", ".join([str(f) for f in fr_list]))
-            else:
-                f.write(str(fr_list))
-            f.write("]\n")
+        else:
+            f.write(":\n")
+            for fr_idx in ln_dict:
+                fr_list = ln_dict[fr_idx]
+                f.write("    ")
+                f.write(str(fr_idx))
+                f.write(": [")
+                if isinstance(fr_list, np.ndarray):
+                    f.write(", ".join([str(f) for f in fr_list]))
+                else:
+                    f.write(str(fr_list))
+                f.write("]\n")
 
     f.write("labeler_list: [")
     f.write(", ".join(labels["labeler_list"]))
@@ -445,47 +447,47 @@ def write_label_yaml(file_handle, labels):
         ln_dict = labels["labels"][ln]
         f.write("  ")
         f.write(ln)
-        if len(ln_dict)==0:
+        if len(ln_dict) == 0:
             f.write(": {}\n")
-            continue
-        f.write(":\n")
-        for fr_idx in ln_dict:
-            fr_dict = ln_dict[fr_idx]
-            f.write("    ")
-            f.write(str(fr_idx))
+        else:
             f.write(":\n")
-            for row in fr_dict:
-                f.write("    - [")
-                if np.isnan(row[0]):
-                    f.write(".nan")
-                else:
-                    f.write(str(row[0]))
-                f.write(", ")
-                if np.isnan(row[0]):
-                    f.write(".nan")
-                else:
-                    f.write(str(row[1]))
-                f.write("]\n")
+            for fr_idx in ln_dict:
+                fr_dict = ln_dict[fr_idx]
+                f.write("    ")
+                f.write(str(fr_idx))
+                f.write(":\n")
+                for row in fr_dict:
+                    f.write("    - [")
+                    if np.isnan(row[0]):
+                        f.write(".nan")
+                    else:
+                        f.write(str(row[0]))
+                    f.write(", ")
+                    if np.isnan(row[0]):
+                        f.write(".nan")
+                    else:
+                        f.write(str(row[1]))
+                    f.write("]\n")
 
     f.write("point_times:\n")
     for ln in labels["point_times"]:
         ln_dict = labels["point_times"][ln]
         f.write("  ")
         f.write(ln)
-        if len(ln_dict)==0:
+        if len(ln_dict) == 0:
             f.write(": {}\n")
-            continue
-        f.write(":\n")
-        for fr_idx in ln_dict:
-            t_list = ln_dict[fr_idx]
-            f.write("    ")
-            f.write(str(fr_idx))
-            f.write(": [")
-            if isinstance(t_list, np.ndarray):
-                f.write(", ".join([str(t) for t in t_list]))
-            else:
-                f.write(str(t_list))
-            f.write("]\n")
+        else:
+            f.write(":\n")
+            for fr_idx in ln_dict:
+                t_list = ln_dict[fr_idx]
+                f.write("    ")
+                f.write(str(fr_idx))
+                f.write(": [")
+                if isinstance(t_list, np.ndarray):
+                    f.write(", ".join([str(t) for t in t_list]))
+                else:
+                    f.write(str(t_list))
+                f.write("]\n")
 
     f.write("version: ")
     f.write(str(labels["version"]))
@@ -532,7 +534,7 @@ def read_label_yaml(file):
                         in_line = True
             elif line.startswith("  ") and line[2] != " ":
                 # This can only happen for labeler, point_times, labels and mean the same in all cases
-                current_label = line.strip()[:-1]
+                current_label = line.strip().split(":")[0]
                 labels[current_key][current_label] = {}
             elif line.startswith("    ") and line[4] != " ":
                 line_parts = line.strip().split(" ")
