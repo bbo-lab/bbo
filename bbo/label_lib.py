@@ -17,7 +17,9 @@ version = 0.4
 
 
 def update(labels, labeler="_unknown"):
-    assert labels["version"] <= version, "Please update ACM traingui"
+    # Old ACM-style labels
+    if all([isinstance(k, int) for k in labels.keys()]):
+        return acm_to_labels(labels, labeler)
 
     # Before versioning
     if "version" not in labels or labels["version"] <= 0.2:
@@ -36,6 +38,9 @@ def update(labels, labeler="_unknown"):
                 labels["labeler"][f_idx] = labeler_idx
             if f_idx not in labels["fr_times"]:
                 labels["fr_times"][f_idx] = 0
+        labels["version"] = 0
+
+    assert labels["version"] <= version, "Please update ACM traingui"
 
     if labels["version"] <= 0.3:
         labeler = {}
@@ -54,14 +59,36 @@ def update(labels, labeler="_unknown"):
         labels["labeler"] = labeler
         labels.pop("fr_times")
 
-    # Bring labeler list in shape (add specials etc)
+    # Bring labeler list in shape (add specials etc.)
     make_global_labeler_list([labels])
 
     labels["version"] = version
     return labels
 
 
-def load(file_path):
+def acm_to_labels(acmlabels, labeler="_unknown"):
+    labels = get_empty_labels()
+    if labeler not in labels['labeler_list']:
+        labels['labeler_list'].append(labeler)
+    uk_idx = labels['labeler_list'].index(labeler)
+
+    for fr_idx in acmlabels:
+        for ln in acmlabels[fr_idx]:
+            initialize_label_name(labels, ln)
+            labels['labels'][ln][fr_idx] = acmlabels[fr_idx][ln]
+            labels['point_times'][ln][fr_idx] = np.ones((acmlabels[fr_idx][ln].shape[0])) * uk_idx
+            labels['labeler'][ln][fr_idx] = np.zeros((acmlabels[fr_idx][ln].shape[0]))
+
+
+def labels_to_acm(labels):
+    acmlabels = {}
+    for ln in labels:
+        for fr_idx in labels[ln]:
+            acmlabels[fr_idx][ln] = labels['labels'][ln][fr_idx]
+    return acmlabels
+
+
+def load(file_path, load_npz=False):
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
@@ -76,13 +103,20 @@ def load(file_path):
             print(e)
             labels = load_raw_yaml(file_path)
     elif file_path.with_suffix(".npz").is_file():
+        if not load_npz:
+            raise FileNotFoundError(f"There should not be any bbo-labelgui npzs without yml file left. "
+                                    "Check if this is an error (e.g. yml file intentionally deleted).")
         file_path = file_path.with_suffix(".npz")
         labels = np.load(file_path, allow_pickle=True)["arr_0"][()]
         print(f"WARNING: Loaded deprecated npz file! {file_path.as_posix()}")
     else:
         raise FileNotFoundError(file_path.as_posix())
 
-    labels = update(labels, labeler=file_path.parent.parent.stem)
+    try:
+        labels = update(labels, labeler=file_path.parent.parent.stem)
+    except KeyError as e:
+        print("Did not find expected keys in ", file_path.as_posix())
+        raise e
 
     return labels
 
@@ -113,6 +147,8 @@ def save(file_path, labels, yml_only=False):
     os.makedirs(file_path.parent.as_posix(), exist_ok=True)
 
     if not yml_only:
+        # We still save npz for a while in case there is an issue with yml. This is ABSOLUTELY DEPRECATED
+        # and should not be used in any circumstance except for emergencies with the yml files.
         np.savez(file_path.with_suffix(".npz").as_posix(), labels)
 
     with open(file_path.with_suffix(".yml").as_posix(), 'w') as f:
@@ -156,7 +192,7 @@ def get_frame_labelers(labels, fr_idx, cam_idx=None):
     return labelers
 
 
-def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
+def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, times_to_0=True):
     # Load data from files
     labels_list = [ll if isinstance(ll, dict) else load(ll) for ll in labels_list]
 
@@ -193,7 +229,8 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
         for ln in labels["labels"]:
             for fr_idx in labels["labels"][ln]:
                 source_cam_mask = labels["labeler"][ln][fr_idx] != index_unmarked
-                source_newer_mask = target_labels["point_times"][ln][fr_idx] < labels["point_times"][ln][fr_idx]
+                # We do <= to be able to do in place corrections in the merged files
+                source_newer_mask = target_labels["point_times"][ln][fr_idx] <= labels["point_times"][ln][fr_idx]
 
                 replace_mask = source_cam_mask & source_newer_mask
                 if not overwrite:
@@ -206,10 +243,22 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False):
 
     sort_dictionaries(target_labels)
 
+    if times_to_0:
+        set_point_times_to_zero(target_labels)
+
     if target_file is not None:
         save(target_file, target_labels, yml_only=yml_only)
         print(f"Saved  {target_file.as_posix()}")
     return target_labels
+
+
+def set_point_times_to_zero(labels, exclude_users=()):
+    exlude_user_idxs = [labels["labeler_list"].index(u) for u in exclude_users if u in labels["labeler_list"]]
+    for ln in labels["point_times"]:
+        for fr_idx in labels["point_times"][ln]:
+            for i_cam, val in enumerate(labels["point_times"][ln][fr_idx]):
+                if labels["labeler"][ln][fr_idx][i_cam] not in exlude_user_idxs:
+                    labels["point_times"][ln][fr_idx][i_cam] = 0
 
 
 def combine_cams(labels_list: list, target_file=None, yml_only=False):
@@ -259,12 +308,7 @@ def initialize_target(labels, target_labels, data_shape):
     # Walk through frames
     for ln in labels["labels"]:
         # Initialize label key
-        if ln not in target_labels["labels"]:
-            target_labels["labels"][ln] = {}
-        if ln not in target_labels["labeler"]:
-            target_labels["labeler"][ln] = {}
-        if ln not in target_labels["point_times"]:
-            target_labels["point_times"][ln] = {}
+        initialize_label_name(target_labels, ln)
         for fr_idx in labels["labels"][ln]:
             # Initialize frame index
             if fr_idx not in target_labels["labels"][ln]:
@@ -276,6 +320,15 @@ def initialize_target(labels, target_labels, data_shape):
             if fr_idx not in target_labels["point_times"][ln]:
                 target_labels["point_times"][ln][fr_idx] = \
                     np.full(data_shape[0], 0, dtype=np.uint64)
+
+
+def initialize_label_name(labels, label_name):
+    if label_name not in labels["labels"]:
+        labels["labels"][label_name] = {}
+    if label_name not in labels["labeler"]:
+        labels["labeler"][label_name] = {}
+    if label_name not in labels["point_times"]:
+        labels["point_times"][label_name] = {}
 
 
 def sort_dictionaries(target_labels):
@@ -401,7 +454,6 @@ def to_numpy(labels,
 
 def to_pandas(labels):
     import pandas as pd  # We don't want this as a global dependency
-    extract_frame_idxs = get_labeled_frame_idxs(labels)
     label_names = get_labels(labels)
     data, time_base = to_numpy(labels)
     data_shape = data.shape
@@ -512,7 +564,7 @@ def read_label_yaml(file):
 
                 if current_key == "labeler_list":
                     if full_line.endswith("]"):
-                        labels[current_key] = [l.strip() for l in full_line[1:-1].split(",")]
+                        labels[current_key] = [ln.strip() for ln in full_line[1:-1].split(",")]
                         in_line = False
                     continue
                 else:
@@ -528,7 +580,7 @@ def read_label_yaml(file):
                     labels[current_key] = float(current_line)
                 elif current_key == "labeler_list":
                     if current_line.endswith("]"):
-                        labels[current_key] = [l.strip() for l in current_line[1:-1].split(",")]
+                        labels[current_key] = [ln.strip() for ln in current_line[1:-1].split(",")]
                     else:
                         full_line = current_line
                         in_line = True
