@@ -78,7 +78,7 @@ def acm_to_labels(acmlabels, labeler="_unknown"):
             labels['labels'][ln][fr_idx] = acmlabels[fr_idx][ln]
             labels['point_times'][ln][fr_idx] = np.ones((acmlabels[fr_idx][ln].shape[0])) * uk_idx
             labels['labeler'][ln][fr_idx] = np.zeros((acmlabels[fr_idx][ln].shape[0]))
-
+    return labels
 
 def labels_to_acm(labels):
     acmlabels = {}
