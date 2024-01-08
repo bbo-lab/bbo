@@ -24,5 +24,5 @@ setup(
     ],
     packages=['bbo'],
     include_package_data=True,
-    install_requires=["pyyaml"],
+    install_requires=["pyyaml","numpy","scipy"],
 )
