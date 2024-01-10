@@ -65,10 +65,10 @@ def inverse_rot(r):
     raise Exception(f'Input type not supported {type(r)}')
 
 @staticmethod
-def mean_rot(r, weights, ignore_nan=True):
+def mean_rot(r, weights=None, ignore_nan=True):
     mask = np.logical_not(isnan_rot(r))
     if np.any(mask) if ignore_nan else np.all(mask):
-        return r[mask].mean(np.asarray(weights)[mask])
+        return r[mask].mean(weights = None if weights is None else np.asarray(weights)[mask])
     return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
 
 @staticmethod
@@ -98,6 +98,34 @@ def apply_rot(r, vec):
     print(res.shape)
     res[mask] = r[mask].apply(vec)
     return res
+
+
+class RigidTransform:
+    def __init__(self, rotation, translation):
+        self.rotation = rotation
+        self.translation = translation
+
+    def apply(self, vec):
+        return self.rotation.apply(vec) + self.translation
+
+    def __getitem(self, key):
+        return RigidTransform(rotation=self.rotation[key], translation=self.translation[key])
+
+    def __setitem__(self, index, value):
+        self.rotation[index] = value.rotation
+        self.translation[index] = value.translation
+
+    def __len__(self):
+        return len(self.rotation)
+
+    def __eq__(self, other):
+        if isinstance(other, RigidTransform):
+            return np.array_equal(self.rotation, other.rotation) and np.array_equal(self.translation, other.translation)
+        return False
+
+    def __mul__(self, other):
+        if isinstance(other, RigidTransform):
+            return RigidTransform(rotation=self.rotation * other.rotation, translation=self.rotation.apply(other.translation) + self.translation)
 
 
 class Line:
