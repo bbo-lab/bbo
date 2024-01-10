@@ -45,13 +45,20 @@ class TestGeometryObjects(unittest.TestCase):
         raveled[1] = 5
         self.assertEqual(l0, geometry.Line((0, 5, 0), (0, 0, 1)))
 
-    def test_rigid_transform(self):
+    def test_rigid_transform_concatenation(self):
         gen = np.random.default_rng(1)
         for i in range(10):
             tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
             tr1 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
             testvec = gen.normal(loc=0.0, scale=3.0, size=3)
             testing.assert_allclose((tr0 * tr1).apply(testvec), tr0.apply(tr1.apply(testvec)))
+
+    def test_rigid_transform_inverse(self):
+        gen = np.random.default_rng(1)
+        for i in range(10):
+            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
+            testvec = gen.normal(loc=0.0, scale=3.0, size=3)
+            testing.assert_allclose(tr0.apply(tr0.inv().apply(testvec)), testvec)
 
 if __name__ == '__main__':
     unittest.main()

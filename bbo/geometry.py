@@ -127,6 +127,9 @@ class RigidTransform:
         if isinstance(other, RigidTransform):
             return RigidTransform(rotation=self.rotation * other.rotation, translation=self.rotation.apply(other.translation) + self.translation)
 
+    def inv(self):
+        rotinv = inverse_rot(self.rotation)
+        return RigidTransform(rotation=rotinv, translation=-rotinv.apply(self.translation))
 
 class Line:
     def __init__(self, position, direction):
