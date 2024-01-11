@@ -101,7 +101,7 @@ def apply_rot(r, vec):
 
 
 class RigidTransform:
-    def __init__(self, rotation, translation):
+    def __init__(self, rotation = Rotation.identity(), translation = np.zeros(shape=(1,3))):
         self.rotation = rotation
         self.translation = translation
 
@@ -125,11 +125,17 @@ class RigidTransform:
 
     def __mul__(self, other):
         if isinstance(other, RigidTransform):
-            return RigidTransform(rotation=self.rotation * other.rotation, translation=self.rotation.apply(other.translation) + self.translation)
+            return RigidTransform(rotation=multiply_rot(self.rotation, other.rotation), translation=self.rotation.apply(other.translation) + self.translation)
 
     def inv(self):
         rotinv = inverse_rot(self.rotation)
         return RigidTransform(rotation=rotinv, translation=-rotinv.apply(self.translation))
+
+    def get_rotation(self):
+        return self.rotation
+
+    def get_translation(self):
+        return self.translation
 
 class Line:
     def __init__(self, position, direction):
