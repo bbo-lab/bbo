@@ -46,6 +46,13 @@ def from_quat_rot(quats):
     res[mask] = Rotation.from_quat(quats[mask])
     return res
 
+@staticmethod
+def smoothrot(r, kernel=[1, 2, 1]):
+    kernel_len = len(kernel)
+    res = Rotation.identity(len(r))
+    for i in range(len(r) - kernel_len):
+        res[i] = geometry.mean_rot(r[i:i + kernel_len], weights=kernel)
+    return res
 
 @staticmethod
 def isnan_rot(r):
@@ -150,10 +157,10 @@ class Line:
         self.direction = functional(self.direction)
 
     def __repr__(self):
-        return str(self.position) + "+ t * " + str(self.direction)
+        return f"{self.position} + t * {self.direction}"
 
     def __str__(self):
-        return str(self.position) + "+ t * " + str(self.direction)
+        return f"{self.position} + t * {self.direction}"
 
     def __getitem__(self, key):
         return Line(position=self.position[key], direction=self.direction[key])
@@ -213,10 +220,10 @@ class Reflection:
         self.normal = normal / np.linalg.norm(normal, axis=0)
 
     def __repr__(self):
-        return str(self.normal) + " * x = 0"
+        return f"{self.normal} * x = 0"
 
     def __str__(self):
-        return str(self.normal) + " * x = 0"
+        return f"{self.normal} * x = 0"
 
     def apply(self, vec):
         return vec - np.inner(self.normal, vec) * self.normal * 2
@@ -337,7 +344,7 @@ class Mirror:
         self.set_tr(res.x[0])
 
     def __repr__(self):
-        return str(self.normal) + " * x = " + str(self.tr)
+        return f"{self.normal} * x = {self.tr}"
 
-    def __str__(self):
-        return str(self.normal) + " * x =  " + str(self.tr)
+    def __str__(s54elf):
+        return f"{self.normal} * x = {self.tr}"
