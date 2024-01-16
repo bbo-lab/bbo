@@ -51,7 +51,7 @@ def smoothrot(r, kernel=[1, 2, 1]):
     kernel_len = len(kernel)
     res = Rotation.identity(len(r))
     for i in range(len(r) - kernel_len):
-        res[i] = geometry.mean_rot(r[i:i + kernel_len], weights=kernel)
+        res[i] = mean_rot(r[i:i + kernel_len], weights=kernel)
     return res
 
 @staticmethod
@@ -70,6 +70,16 @@ def inverse_rot(r):
     if not mask:
         return r
     raise Exception(f'Input type not supported {type(r)}')
+
+@staticmethod
+def rotation_gradient(rot):
+    inv_rot = inverse_rot(rot)
+    res = multiply_rot(rot[:-2], inv_rot[2:])
+    res = np.asarray(
+        [(multiply_rot(rot[0], inv_rot[1])).as_rotvec(), *res.as_rotvec() / 2,
+         (multiply_rot(rot[-1], inv_rot[-2])).as_rotvec()])
+    return Rotation.from_rotvec(res)
+
 
 @staticmethod
 def mean_rot(r, weights=None, ignore_nan=True):
@@ -101,10 +111,74 @@ def multiply_rot(lhs, rhs):
 @staticmethod
 def apply_rot(r, vec):
     mask = ~isnan_rot(r)
-    res = np.full(shape=(len(mask), 3), fill_value=np.nan)
-    print(res.shape)
-    res[mask] = r[mask].apply(vec)
-    return res
+    if isinstance(mask, np.ndarray):
+        res = np.full(shape=(len(mask), 3), fill_value=np.nan)
+        if len(vec.shape) == 2:
+            vec = vec[mask]
+        res[mask] = r[mask].apply(vec)
+        return res
+    if mask:
+        return r.apply(vec)
+    return np.full(shape=vec.shape, fill_value=np.nan)
+
+
+def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
+    """
+    Converts cartesian to spherical coordinates according to physical definition
+    https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
+    Norm gives the length of the incoming vector
+    Inclination gives the rotaton for x-y-plane to z
+    Azimuth rotates around the Longitude on the x-y-plane
+    Parameters
+    ----------
+    vec
+    xyz
+    ria
+    degrees
+    """
+    vec = np.asarray(vec).T
+    radius, inclination, azimuth = vec[(ria,)]
+    if degrees:
+        inclination = np.rad2deg(inclination)
+        azimuth = np.rad2deg(inclination)
+    res = [0] * 3
+    rsin = radius * np.sin(inclination)
+    res[xyz[0]] = rsin * np.cos(azimuth)
+    res[xyz[1]] = rsin * np.sin(azimuth)
+    res[xyz[2]] = radius * np.cos(inclination)
+    return np.vstack(res).T
+
+
+def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
+    """
+    Converts cartesian to spherical coordinates according to physical definition
+    https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
+    Norm gives the length of the incoming vector
+    Inclination rotates around the Longitude on the x-y-plane
+    Elevation gives the rotaton for x-y-plane to z
+    Parameters
+    ----------
+    vec
+    xyz
+    ria
+    degrees
+
+    Returns
+
+    """
+    vec = np.asarray(vec).T
+    x,y,z = vec[(xyz,)]
+    sum = np.square(x) + np.square(y)
+    azimuth = np.arctan2(y, x)
+    inclination = np.arctan2(np.sqrt(sum), z)
+    res = [0] * 3
+    res[ria[0]] = np.sqrt(sum + np.square(z))
+    if degrees:
+        azimuth = np.rad2deg(azimuth)
+        inclination = np.rad2deg(inclination)
+    res[ria[1]] = inclination
+    res[ria[2]] = azimuth
+    return np.vstack(res).T
 
 
 class RigidTransform:

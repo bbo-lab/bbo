@@ -4,6 +4,13 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import numpy.testing as testing
 
+class TestCoordinateTransformations(unittest.TestCase):
+    def test_coordinate_inverse(self):
+        rnd = np.random.default_rng(1)
+        for i in range(10):
+            cart = [rnd.normal(loc=0, size=3)]
+            sph = geometry.cart2spherical(cart)
+            np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
 
 class TestGeometryObjects(unittest.TestCase):
     def test_reflection(self):
