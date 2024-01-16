@@ -122,7 +122,7 @@ def apply_rot(r, vec):
     return np.full(shape=vec.shape, fill_value=np.nan)
 
 
-def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
+def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -136,20 +136,30 @@ def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
     ria
     degrees
     """
-    vec = np.asarray(vec).T
-    radius, inclination, azimuth = vec[(ria,)]
+    radius, inclination, azimuth = np.asarray(vec).T[(ria,)]
     if degrees:
-        inclination = np.rad2deg(inclination)
-        azimuth = np.rad2deg(inclination)
+        inclination = np.deg2rad(inclination)
+        azimuth = np.deg2rad(inclination)
+    if center_inclination:
+        inclination += np.pi / 2
     res = [0] * 3
     rsin = radius * np.sin(inclination)
-    res[xyz[0]] = rsin * np.cos(azimuth)
-    res[xyz[1]] = rsin * np.sin(azimuth)
-    res[xyz[2]] = radius * np.cos(inclination)
+    x = rsin * np.cos(azimuth)
+    y = rsin * np.sin(azimuth)
+    z = radius * np.cos(inclination)
+    for a in invertaxis:
+        match a:
+            case 'x': x = -x
+            case 'y': y = -y
+            case 'z': z = -z
+            case _: raise Exception(f"literal {a} not known")
+    res[xyz[0]] = x
+    res[xyz[1]] = y
+    res[xyz[2]] = z
     return np.vstack(res).T
 
 
-def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
+def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -168,11 +178,19 @@ def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), degrees=False):
     """
     vec = np.asarray(vec).T
     x,y,z = vec[(xyz,)]
+    for a in invertaxis:
+        match a:
+            case 'x': x = -x
+            case 'y': y = -y
+            case 'z': z = -z
+            case _: raise Exception(f"literal {a} not known")
     sum = np.square(x) + np.square(y)
     azimuth = np.arctan2(y, x)
     inclination = np.arctan2(np.sqrt(sum), z)
     res = [0] * 3
     res[ria[0]] = np.sqrt(sum + np.square(z))
+    if center_inclination:
+        inclination -= np.pi / 2
     if degrees:
         azimuth = np.rad2deg(azimuth)
         inclination = np.rad2deg(inclination)
