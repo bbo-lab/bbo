@@ -122,7 +122,7 @@ def apply_rot(r, vec):
     return np.full(shape=vec.shape, fill_value=np.nan)
 
 
-def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_inclination=False, degrees=False):
+def spherical2cart(vec, cart = "xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -132,34 +132,25 @@ def spherical2cart(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_incl
     Parameters
     ----------
     vec
-    xyz
-    ria
+    cart
+    sph
     degrees
     """
-    radius, inclination, azimuth = np.asarray(vec).T[(ria,)]
+    radius, inclination, azimuth = np.asarray(vec).T[([sph.index(a) for a in "ria"])]
     if degrees:
         inclination = np.deg2rad(inclination)
         azimuth = np.deg2rad(inclination)
     if center_inclination:
         inclination += np.pi / 2
-    res = [0] * 3
     rsin = radius * np.sin(inclination)
-    x = rsin * np.cos(azimuth)
-    y = rsin * np.sin(azimuth)
-    z = radius * np.cos(inclination)
+    res = [rsin * np.cos(azimuth), rsin * np.sin(azimuth), radius * np.cos(inclination)]
     for a in invertaxis:
-        match a:
-            case 'x': x = -x
-            case 'y': y = -y
-            case 'z': z = -z
-            case _: raise Exception(f"literal {a} not known")
-    res[xyz[0]] = x
-    res[xyz[1]] = y
-    res[xyz[2]] = z
-    return np.vstack(res).T
+        idx = "xyz".index(a)
+        res[idx] = -res[idx]
+    return np.vstack([res["xyz".index(a)] for a in cart]).T
 
 
-def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_inclination=False, degrees=False):
+def cart2spherical(vec, cart="xyz", sph = "ria", invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -169,34 +160,28 @@ def cart2spherical(vec, xyz = (0,1,2), ria = (0,1,2), invertaxis="", center_incl
     Parameters
     ----------
     vec
-    xyz
-    ria
+    cart
+    sph
     degrees
 
     Returns
 
     """
-    vec = np.asarray(vec).T
-    x,y,z = vec[(xyz,)]
+    vec = np.asarray(vec).T[([cart.index(a) for a in "xyz"],)]
     for a in invertaxis:
-        match a:
-            case 'x': x = -x
-            case 'y': y = -y
-            case 'z': z = -z
-            case _: raise Exception(f"literal {a} not known")
+        idx = "xyz".index(a)
+        vec[idx] = -vec[idx]
+    x,y,z = vec
     sum = np.square(x) + np.square(y)
     azimuth = np.arctan2(y, x)
     inclination = np.arctan2(np.sqrt(sum), z)
-    res = [0] * 3
-    res[ria[0]] = np.sqrt(sum + np.square(z))
     if center_inclination:
         inclination -= np.pi / 2
     if degrees:
         azimuth = np.rad2deg(azimuth)
         inclination = np.rad2deg(inclination)
-    res[ria[1]] = inclination
-    res[ria[2]] = azimuth
-    return np.vstack(res).T
+    res = [np.sqrt(sum + np.square(z)), inclination, azimuth]
+    return np.vstack([res["ria".index(a)] for a in sph]).T
 
 
 class RigidTransform:
