@@ -265,7 +265,6 @@ def combine_cams(labels_list: list, target_file=None, yml_only=False):
     # Normalize path of target_file
     if isinstance(target_file, str):
         target_file = Path(target_file).expanduser().resolve()
-
     # Load data from files
     for i_l, label in enumerate(labels_list):
         if isinstance(label, str):
@@ -276,8 +275,6 @@ def combine_cams(labels_list: list, target_file=None, yml_only=False):
         if isinstance(label, Path):
             labels_list[i_l] = labels_list[i_l].expanduser().resolve()
             labels_list[i_l] = load(labels_list[i_l].as_posix())
-
-    make_global_labeler_list(labels_list)
 
     target_labels = get_empty_labels()
     target_labels['labeler_list'] = make_global_labeler_list(labels_list)
