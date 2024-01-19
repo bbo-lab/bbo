@@ -291,6 +291,17 @@ def get_orthogonal(v):
     return np.vstack((v, x, y))
 
 
+def get_perpendicalar_rotation(source, dest):
+    rotvec = np.cross(source, dest)
+    norm = np.linalg.norm(rotvec, axis=source.ndim - 1, keepdims=True)
+    rotvec *= np.divide(np.arcsin(norm), norm, where=norm>1e-10)
+    norm = np.linalg.norm(rotvec, axis=source.ndim - 1, keepdims=True)
+    prod = np.einsum("...i,...i->...", source, dest) < 0
+    prod = np.expand_dims(prod, axis=-1)
+    np.multiply(rotvec, np.divide((np.pi - norm), norm, where=norm>1e-10), where=prod, out=rotvec)
+    return Rotation.from_rotvec(rotvec, degrees=False)
+
+
 class Reflection:
     def __init__(self, normal):
         normal = np.array(normal, copy=True)
