@@ -9,7 +9,8 @@ class TestSimpleFunctions(unittest.TestCase):
     @staticmethod
     def run_on_vectors(v0, v1):
         v0, v1 = np.asarray(v0), np.asarray(v1)
-        v0, v1 = v0 / np.linalg.norm(v0), v1 / np.linalg.norm(v1)
+        v0, v1 = v0 / np.linalg.norm(v0, axis=v0.ndim - 1, keepdims=True), \
+                 v1 / np.linalg.norm(v1, axis=v1.ndim - 1, keepdims=True)
         rot = geometry.get_perpendicalar_rotation(v0, v1)
         testing.assert_allclose(rot.apply(v0), v1, atol=1e-7)
 
@@ -22,7 +23,8 @@ class TestSimpleFunctions(unittest.TestCase):
         v1 = gen.normal(loc=0.0, scale=3.0, size=3)
         run_on_vectors(v0, v1)
 
-    #run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2,3)), gen.normal(loc=0.0, scale=3.0, size=(2,3)))
+    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2,3)), gen.normal(loc=0.0, scale=3.0, size=(2,3)))
+    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=3), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
 
 
 class TestCoordinateTransformations(unittest.TestCase):

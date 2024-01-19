@@ -46,6 +46,14 @@ def from_quat_rot(quats):
     res[mask] = Rotation.from_quat(quats[mask])
     return res
 
+
+def from_rotvec_rot(rotvecs):
+    mask = ~np.any(np.isnan(rotvecs), axis=1)
+    res = Rotation.from_rotvec(np.full(shape=(len(mask), 3), fill_value=np.nan))
+    res[mask] = Rotation.from_rotvec(rotvecs[mask])
+    return res
+
+
 @staticmethod
 def smoothrot(r, kernel=[1, 2, 1]):
     kernel_len = len(kernel)
@@ -293,12 +301,13 @@ def get_orthogonal(v):
 
 def get_perpendicalar_rotation(source, dest):
     rotvec = np.cross(source, dest)
-    norm = np.linalg.norm(rotvec, axis=source.ndim - 1, keepdims=True)
-    rotvec *= np.divide(np.arcsin(norm), norm, where=norm>1e-10)
-    norm = np.linalg.norm(rotvec, axis=source.ndim - 1, keepdims=True)
-    prod = np.einsum("...i,...i->...", source, dest) < 0
-    prod = np.expand_dims(prod, axis=-1)
-    np.multiply(rotvec, np.divide((np.pi - norm), norm, where=norm>1e-10), where=prod, out=rotvec)
+    ndim = max(source.ndim, dest.ndim)
+    norm = np.linalg.norm(rotvec, axis=ndim - 1, keepdims=True)
+    dot = np.inner(source, dest)
+    if dot.ndim > 1:
+        dot = dot.diagonal()[:, np.newaxis]
+    dot = dot.reshape(norm.shape)
+    rotvec *= np.divide(np.arccos(dot), norm, where=norm > 1e-10)
     return Rotation.from_rotvec(rotvec, degrees=False)
 
 
