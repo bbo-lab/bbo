@@ -1,29 +1,33 @@
 import unittest
-import bbo.geometry as geometry
+
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 import numpy.testing as testing
+from scipy.spatial.transform import Rotation as R
+
+import bbo.geometry as geometry
+
 
 class TestSimpleFunctions(unittest.TestCase):
     gen = np.random.default_rng(1)
+
     @staticmethod
     def run_on_vectors(v0, v1):
         v0, v1 = np.asarray(v0), np.asarray(v1)
         v0, v1 = v0 / np.linalg.norm(v0, axis=v0.ndim - 1, keepdims=True), \
                  v1 / np.linalg.norm(v1, axis=v1.ndim - 1, keepdims=True)
-        rot = geometry.get_perpendicalar_rotation(v0, v1)
+        rot = geometry.get_perpendicular_rotation(v0, v1)
         testing.assert_allclose(rot.apply(v0), v1, atol=1e-7)
 
-    run_on_vectors((1,0,0),(1,0,0))
-    run_on_vectors((1,0,0), (0,1,0))
-    run_on_vectors((1,0,0), (-1,1e-3,0))
+    run_on_vectors((1, 0, 0), (1, 0, 0))
+    run_on_vectors((1, 0, 0), (0, 1, 0))
+    run_on_vectors((1, 0, 0), (-1, 1e-3, 0))
 
     for i in range(10):
         v0 = gen.normal(loc=0.0, scale=3.0, size=3)
         v1 = gen.normal(loc=0.0, scale=3.0, size=3)
         run_on_vectors(v0, v1)
 
-    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2,3)), gen.normal(loc=0.0, scale=3.0, size=(2,3)))
+    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2, 3)), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
     run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=3), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
 
 
@@ -34,6 +38,7 @@ class TestCoordinateTransformations(unittest.TestCase):
             cart = [rnd.normal(loc=0, size=3)]
             sph = geometry.cart2spherical(cart)
             np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
+
 
 class TestGeometryObjects(unittest.TestCase):
     def test_reflection(self):
@@ -46,7 +51,8 @@ class TestGeometryObjects(unittest.TestCase):
             chained = reflection_0 * reflection_1
             testing.assert_allclose(reflection_0.as_matrix() @ testvec, reflection_0.apply(testvec), atol=0.00001)
             testing.assert_allclose(chained.apply(testvec), result, atol=0.00001)
-            testing.assert_allclose(reflection_0.as_matrix() @ reflection_1.as_matrix(), chained.as_matrix(), atol=0.00001)
+            testing.assert_allclose(reflection_0.as_matrix() @ reflection_1.as_matrix(), chained.as_matrix(),
+                                    atol=0.00001)
         reflection_0 = geometry.Reflection(normal=(1, 0, 0))
         reflection_1 = geometry.Reflection(normal=(0, 1, 0))
         testvec = gen.normal(loc=0.0, scale=3.0, size=3)
@@ -78,17 +84,21 @@ class TestGeometryObjects(unittest.TestCase):
     def test_rigid_transform_concatenation(self):
         gen = np.random.default_rng(1)
         for i in range(10):
-            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
-            tr1 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
+            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
+                                          translation=gen.normal(loc=0.0, scale=3.0, size=3))
+            tr1 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
+                                          translation=gen.normal(loc=0.0, scale=3.0, size=3))
             testvec = gen.normal(loc=0.0, scale=3.0, size=3)
             testing.assert_allclose((tr0 * tr1).apply(testvec), tr0.apply(tr1.apply(testvec)))
 
     def test_rigid_transform_inverse(self):
         gen = np.random.default_rng(1)
         for i in range(10):
-            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),translation=gen.normal(loc=0.0, scale=3.0, size=3))
+            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
+                                          translation=gen.normal(loc=0.0, scale=3.0, size=3))
             testvec = gen.normal(loc=0.0, scale=3.0, size=3)
             testing.assert_allclose(tr0.apply(tr0.inv().apply(testvec)), testvec)
+
 
 if __name__ == '__main__':
     unittest.main()
