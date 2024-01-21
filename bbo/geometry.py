@@ -299,7 +299,7 @@ def get_orthogonal(v):
     return np.vstack((v, x, y))
 
 
-def get_perpendicalar_rotation(source, dest):
+def get_perpendicular_rotation(source, dest):
     rotvec = np.cross(source, dest)
     ndim = max(source.ndim, dest.ndim)
     norm = np.linalg.norm(rotvec, axis=ndim - 1, keepdims=True)
