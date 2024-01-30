@@ -155,8 +155,11 @@ def save(file_path, labels, yml_only=False):
         write_label_yaml(f, labels)
 
 
-def get_labels(labels):
-    return [lm for lm in labels["labels"] if len(labels["labels"][lm].keys()) > 0]
+def get_labels(labels, allow_empty=False):
+    if allow_empty:
+        return list(labels["labels"].keys())
+    else:
+        return [lm for lm in labels["labels"] if len(labels["labels"][lm].keys()) > 0]
 
 
 def get_labeled_frame_idxs(labels):
