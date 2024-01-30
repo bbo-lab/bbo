@@ -304,6 +304,29 @@ def combine_cams(labels_list: list, target_file=None, yml_only=False):
     return target_labels
 
 
+def reorder_cams(labels, new_order: tuple, target_file=None, yml_only=False):
+    # Normalize path of target_file
+    if isinstance(target_file, str):
+        target_file = Path(target_file).expanduser().resolve()
+
+    # Load data from files
+    if isinstance(labels, str):
+        labels = Path(labels)
+    if isinstance(labels, Path):
+        labels = labels.expanduser().resolve()
+        labels = load(labels.as_posix())
+
+    for ln in labels["labels"]:
+        for fr_idx in labels["labels"][ln]:
+            labels["labels"][ln][fr_idx] = labels["labels"][ln][fr_idx][new_order,]
+            labels["point_times"][ln][fr_idx] = labels["point_times"][ln][fr_idx][new_order,]
+            labels["labeler"][ln][fr_idx] = labels["labeler"][ln][fr_idx][new_order,]
+
+    if target_file is not None:
+        save(target_file, labels, yml_only=yml_only)
+    return labels
+
+
 def initialize_target(labels, target_labels, data_shape):
     # Walk through frames
     for ln in labels["labels"]:
