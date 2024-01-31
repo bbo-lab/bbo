@@ -233,7 +233,7 @@ class Line:
     def __init__(self, position, direction):
         self.position = np.asarray(position)
         self.direction = np.asarray(direction)
-        if not np.array_equal(self.position.shape, self.position.shape):
+        if not np.array_equal(self.position.shape, self.direction.shape):
             raise Exception("Shapes have to be equal")
         self.shape = self.position.shape
 
@@ -254,8 +254,11 @@ class Line:
         self.position[index] = value.position
         self.direction[index] = value.direction
 
+    def is_single(self):
+        return self.position.ndim == 1
+
     def __len__(self):
-        if len(self.position.shape) == 1:
+        if self.is_single():
             raise Exception('Not an array')
         return self.position.shape[0]
 
@@ -263,6 +266,23 @@ class Line:
         if isinstance(other, Line):
             return np.array_equal(self.position, other.position) and np.array_equal(self.direction, other.direction)
         return False
+
+    def calc_min_point_dist(self, x) -> np.ndarray:
+        """Return the minimum distances of points from a line
+        :param x: Nx3 array of points
+        :return: (N,) array of distances
+        """
+
+        p = self.position
+        v = self.direction
+        x = np.asarray(x)
+        if self.is_single() and x.ndim > 1:
+            p = p[np.newaxis, :]
+            v = v[np.newaxis, :]
+        d = x - p
+        proj_vecs = d - (d @ v) @ v
+        dists = np.linalg.norm(proj_vecs, axis=proj_vecs.ndim - 1)
+        return dists
 
     def normalize(self):
         self.direction /= np.linalg.norm(self.direction, axis=-1)[:, np.newaxis]
@@ -309,6 +329,11 @@ def get_perpendicular_rotation(source, dest):
     dot = dot.reshape(norm.shape)
     rotvec *= np.divide(np.arccos(dot), norm, where=norm > 1e-10)
     return Rotation.from_rotvec(rotvec, degrees=False)
+
+
+def get_distances(points, v0, v1, tr):
+    t = np.zeros(len(points))
+    points = points - tr[np.newaxis, :]
 
 
 class Reflection:

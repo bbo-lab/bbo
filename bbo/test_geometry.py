@@ -81,6 +81,12 @@ class TestGeometryObjects(unittest.TestCase):
         raveled[1] = 5
         self.assertEqual(l0, geometry.Line((0, 5, 0), (0, 0, 1)))
 
+    def test_line_mindist(self):
+        line = geometry.Line((0,1), (2,1))
+        self.assertEqual(line.calc_min_point_dist((2,2)), 0)
+        line = geometry.Line((0,0), (1,1))
+        self.assertEqual(line.calc_min_point_dist((-1,1)), np.sqrt(2))
+
     def test_rigid_transform_concatenation(self):
         gen = np.random.default_rng(1)
         for i in range(10):
