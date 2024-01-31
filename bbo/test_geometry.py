@@ -82,10 +82,28 @@ class TestGeometryObjects(unittest.TestCase):
         self.assertEqual(l0, geometry.Line((0, 5, 0), (0, 0, 1)))
 
     def test_line_mindist(self):
-        line = geometry.Line((0,1), (2,1))
-        self.assertEqual(line.calc_min_point_dist((2,2)), 0)
-        line = geometry.Line((0,0), (1,1))
-        self.assertEqual(line.calc_min_point_dist((-1,1)), np.sqrt(2))
+        # 2D
+        line = geometry.Line((0, 1), (2, 1))
+        self.assertEqual(line.calc_min_point_dist((2, 2)), 0)
+        line = geometry.Line((0, 0), (1, 1))
+        self.assertEqual(line.calc_min_point_dist((-1, 1)), np.sqrt(2))
+        # 3D a line and a point
+        line = geometry.Line((0, 0, 0), (1, 1, 1))
+        self.assertAlmostEqual(line.calc_min_point_dist((0, 1, 1)), np.sqrt(2)/np.sqrt(3))
+        # 3D a line and 2 points
+        np.testing.assert_allclose(line.calc_min_point_dist([(0, 1, 1), (1, 1, -2)]),
+                                   [np.sqrt(2/3), np.sqrt(6)])
+        # 3D 2 lines and a point
+        line = geometry.Line(np.zeros((2, 3)), np.arange(6).reshape((2, 3)))
+        np.testing.assert_allclose(line.calc_min_point_dist((0, 1, 1)), [1/np.sqrt(5), np.sqrt(19/50)])
+        # 3D 2 lines and 2 points
+        np.testing.assert_allclose(line.calc_min_point_dist([(0, 1, 1), (1, 1, -2)]), [1/np.sqrt(5), np.sqrt(291/50)])
+        # 3D 2 lines and 3 points
+        line = geometry.Line([np.ones(3), np.zeros(3)], np.arange(6).reshape((2, 3)))
+        np.testing.assert_allclose(line.calc_min_point_dist([(0, 1, 1), (1, 1, -2), (0, 1, 2)], outer=True),
+                                   [[1, np.sqrt(9/5), np.sqrt(6/5)],
+                                    [np.sqrt(19/50), np.sqrt(291/50), np.sqrt(54/50)]],
+                                   atol=1e-5)
 
     def test_rigid_transform_concatenation(self):
         gen = np.random.default_rng(1)

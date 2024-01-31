@@ -62,9 +62,11 @@ def smoothrot(r, kernel=[1, 2, 1]):
         res[i] = mean_rot(r[i:i + kernel_len], weights=kernel)
     return res
 
+
 @staticmethod
 def isnan_rot(r):
     return np.isnan(r.magnitude())
+
 
 @staticmethod
 def inverse_rot(r):
@@ -78,6 +80,7 @@ def inverse_rot(r):
     if not mask:
         return r
     raise Exception(f'Input type not supported {type(r)}')
+
 
 @staticmethod
 def rotation_gradient(rot):
@@ -93,8 +96,9 @@ def rotation_gradient(rot):
 def mean_rot(r, weights=None, ignore_nan=True):
     mask = np.logical_not(isnan_rot(r))
     if np.any(mask) if ignore_nan else np.all(mask):
-        return r[mask].mean(weights = None if weights is None else np.asarray(weights)[mask])
+        return r[mask].mean(weights=None if weights is None else np.asarray(weights)[mask])
     return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
+
 
 @staticmethod
 def multiply_rot(lhs, rhs):
@@ -116,6 +120,7 @@ def multiply_rot(lhs, rhs):
         return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
     raise Exception(f'Input type not supported {type(lhs)} {type(rhs)}')
 
+
 @staticmethod
 def apply_rot(r, vec):
     mask = ~isnan_rot(r)
@@ -130,7 +135,7 @@ def apply_rot(r, vec):
     return np.full(shape=vec.shape, fill_value=np.nan)
 
 
-def spherical2cart(vec, cart = "xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
+def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -158,7 +163,7 @@ def spherical2cart(vec, cart = "xyz", sph="ria", invertaxis="", center_inclinati
     return np.vstack([res["xyz".index(a)] for a in cart]).T
 
 
-def cart2spherical(vec, cart="xyz", sph = "ria", invertaxis="", center_inclination=False, degrees=False):
+def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -179,7 +184,7 @@ def cart2spherical(vec, cart="xyz", sph = "ria", invertaxis="", center_inclinati
     for a in invertaxis:
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
-    x,y,z = vec
+    x, y, z = vec
     sum = np.square(x) + np.square(y)
     azimuth = np.arctan2(y, x)
     inclination = np.arctan2(np.sqrt(sum), z)
@@ -193,7 +198,7 @@ def cart2spherical(vec, cart="xyz", sph = "ria", invertaxis="", center_inclinati
 
 
 class RigidTransform:
-    def __init__(self, rotation = Rotation.identity(), translation = np.zeros(shape=(1,3))):
+    def __init__(self, rotation=Rotation.identity(), translation=np.zeros(shape=(1, 3))):
         self.rotation = rotation
         self.translation = translation
 
@@ -217,7 +222,8 @@ class RigidTransform:
 
     def __mul__(self, other):
         if isinstance(other, RigidTransform):
-            return RigidTransform(rotation=multiply_rot(self.rotation, other.rotation), translation=self.rotation.apply(other.translation) + self.translation)
+            return RigidTransform(rotation=multiply_rot(self.rotation, other.rotation),
+                                  translation=self.rotation.apply(other.translation) + self.translation)
 
     def inv(self):
         rotinv = inverse_rot(self.rotation)
@@ -229,10 +235,11 @@ class RigidTransform:
     def get_translation(self):
         return self.translation
 
+
 class Line:
     def __init__(self, position, direction):
-        self.position = np.asarray(position)
-        self.direction = np.asarray(direction)
+        self.position = np.asarray(position, dtype=np.float64)
+        self.direction = np.asarray(direction, dtype=np.float64)
         if not np.array_equal(self.position.shape, self.direction.shape):
             raise Exception("Shapes have to be equal")
         self.shape = self.position.shape
@@ -259,6 +266,7 @@ class Line:
 
     def __len__(self):
         if self.is_single():
+            # TODO: retun 1?
             raise Exception('Not an array')
         return self.position.shape[0]
 
@@ -267,32 +275,37 @@ class Line:
             return np.array_equal(self.position, other.position) and np.array_equal(self.direction, other.direction)
         return False
 
-    def calc_min_point_dist(self, x) -> np.ndarray:
-        """Return the minimum distances of points from a line
+    def calc_min_point_dist(self, x, outer=False) -> np.ndarray or float:
+        """Return the minimum distances of points from line(s)
         :param x: Nx3 array of points
-        :return: (N,) array of distances
+        :param outer: if True, return the distance matrix
+        :return: (N,) array of distances if N matches the number of lines and outer is False
+        :return: (N, M) array of distances if N is different from M (number of lines) and outer is True
         """
 
+        self.normalize()
         p = self.position
         v = self.direction
-        x = np.asarray(x)
+        x = np.asarray(x, dtype=np.float64)
         if self.is_single() and x.ndim > 1:
             p = p[np.newaxis, :]
             v = v[np.newaxis, :]
+        if outer:
+            p = p[:, np.newaxis, :]
+            v = v[:, np.newaxis, :]
         d = x - p
-        proj_vecs = d - (d @ v) @ v
+        proj_vecs = d - np.sum(d * v, axis=-1, keepdims=True) * v
         dists = np.linalg.norm(proj_vecs, axis=proj_vecs.ndim - 1)
         return dists
 
     def normalize(self):
-        self.direction /= np.linalg.norm(self.direction, axis=-1)[:, np.newaxis]
+        self.direction /= np.linalg.norm(self.direction, axis=-1, keepdims=True)
 
     def copy(self):
         return Line(position=np.copy(self.position), direction=np.copy(self.direction))
 
     def ravel(self, index=None):
         if index is not None:
-            array = None
             if index % 6 < 3:
                 array = self.position
             else:
@@ -468,5 +481,5 @@ class Mirror:
     def __repr__(self):
         return f"{self.normal} * x = {self.tr}"
 
-    def __str__(s54elf):
+    def __str__(self):
         return f"{self.normal} * x = {self.tr}"
