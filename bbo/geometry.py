@@ -135,9 +135,46 @@ def apply_rot(r, vec):
     return np.full(shape=vec.shape, fill_value=np.nan)
 
 
+def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
+    """
+    Converts cartesian to equidistant coordinates
+    """
+    vec = np.asarray(vec).T[([cart.index(a) for a in "xyz"],)]
+    for a in invertaxis:
+        idx = "xyz".index(a)
+        vec[idx] = -vec[idx]
+    x,y,z = vec
+    length = np.square(x) + np.square(y)
+    norm = np.sqrt(length + np.square(z))
+    length = np.sqrt(length)
+    length = np.arctan2(length, -z) / length;
+    res = [norm, x * length, y * length]
+    if degrees:
+        res[1] = np.rad2deg(res[1])
+        res[2] = np.rad2deg(res[2])
+    return np.vstack([res["rxy".index(a)] for a in equidist]).T
+
+
+def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
+    """
+    Converts equidistant to cartesian coordinates
+    """
+    radius, xequidist, yequidist = np.asarray(vec).T[([equidist.index(a) for a in "rxy"])]
+    if degrees:
+        xequidist = np.deg2rad(xequidist)
+        yequidist = np.deg2rad(yequidist)
+    radius = np.sqrt(np.square(xequidist) + np.square(yequidist))
+    div = divlim(np.sin(radius), radius)
+    res = [div * xequidist, div * yequidist, -np.cos(radius)]
+    for a in invertaxis:
+        idx = "xyz".index(a)
+        res[idx] = -res[idx]
+    return np.vstack([res["xyz".index(a)] for a in cart]).T
+
+
 def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
     """
-    Converts cartesian to spherical coordinates according to physical definition
+    Converts spherical to cartesian coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
     Norm gives the length of the incoming vector
     Inclination gives the rotaton for x-y-plane to z
