@@ -8,8 +8,6 @@ import bbo.geometry as geometry
 
 
 class TestSimpleFunctions(unittest.TestCase):
-    gen = np.random.default_rng(1)
-
     @staticmethod
     def run_on_vectors(v0, v1):
         v0, v1 = np.asarray(v0), np.asarray(v1)
@@ -18,17 +16,20 @@ class TestSimpleFunctions(unittest.TestCase):
         rot = geometry.get_perpendicular_rotation(v0, v1)
         testing.assert_allclose(rot.apply(v0), v1, atol=1e-7)
 
-    run_on_vectors((1, 0, 0), (1, 0, 0))
-    run_on_vectors((1, 0, 0), (0, 1, 0))
-    run_on_vectors((1, 0, 0), (-1, 1e-3, 0))
+    def test_get_perpendicular_rotation(self):
+        gen = np.random.default_rng(1)
 
-    for i in range(10):
-        v0 = gen.normal(loc=0.0, scale=3.0, size=3)
-        v1 = gen.normal(loc=0.0, scale=3.0, size=3)
-        run_on_vectors(v0, v1)
+        TestSimpleFunctions.run_on_vectors((1, 0, 0), (1, 0, 0))
+        TestSimpleFunctions.run_on_vectors((1, 0, 0), (0, 1, 0))
+        TestSimpleFunctions.run_on_vectors((1, 0, 0), (-1, 1e-3, 0))
 
-    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2, 3)), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
-    run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=3), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
+        for i in range(10):
+            v0 = gen.normal(loc=0.0, scale=3.0, size=3)
+            v1 = gen.normal(loc=0.0, scale=3.0, size=3)
+            TestSimpleFunctions.run_on_vectors(v0, v1)
+
+        TestSimpleFunctions.run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(2, 3)), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
+        TestSimpleFunctions.run_on_vectors(gen.normal(loc=0.0, scale=3.0, size=(1, 3)), gen.normal(loc=0.0, scale=3.0, size=(2, 3)))
 
 
 class TestCoordinateTransformations(unittest.TestCase):
