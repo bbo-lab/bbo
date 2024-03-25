@@ -135,6 +135,10 @@ def apply_rot(r, vec):
     return np.full(shape=vec.shape, fill_value=np.nan)
 
 
+def divlim(divident, divisor):
+    return np.divide(divident, divisor, np.zeros_like(divident), where=np.logical_or(divident!=0,divisor!=0))
+
+
 def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
     """
     Converts cartesian to equidistant coordinates
@@ -152,24 +156,27 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     if degrees:
         res[1] = np.rad2deg(res[1])
         res[2] = np.rad2deg(res[2])
-    return np.vstack([res["rxy".index(a)] for a in equidist]).T
+    return np.asarray([res["rxy".index(a)] for a in equidist]).T
 
 
 def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
     """
     Converts equidistant to cartesian coordinates
     """
-    radius, xequidist, yequidist = np.asarray(vec).T[([equidist.index(a) for a in "rxy"])]
+    vec = np.asarray(vec).T
+    indices = [equidist.find(a) for a in "rxy"]
+    radius = vec[indices[0]] if indices[0] > -1 else 1
+    xequidist, yequidist = vec[indices[1]], vec[indices[2]]
     if degrees:
         xequidist = np.deg2rad(xequidist)
         yequidist = np.deg2rad(yequidist)
-    radius = np.sqrt(np.square(xequidist) + np.square(yequidist))
-    div = divlim(np.sin(radius), radius)
-    res = [div * xequidist, div * yequidist, -np.cos(radius)]
+    radius2d = np.sqrt(np.square(xequidist) + np.square(yequidist))
+    div = divlim(np.sin(radius2d) * radius, radius2d)
+    res = [div * xequidist, div * yequidist, -np.cos(radius2d) * radius]
     for a in invertaxis:
         idx = "xyz".index(a)
         res[idx] = -res[idx]
-    return np.vstack([res["xyz".index(a)] for a in cart]).T
+    return np.asarray([res["xyz".index(a)] for a in cart]).T
 
 
 def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
@@ -186,7 +193,10 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     sph
     degrees
     """
-    radius, inclination, azimuth = np.asarray(vec).T[([sph.index(a) for a in "ria"])]
+    vec = np.asarray(vec).T
+    indices = [sph.find(a) for a in "ria"]
+    radius = vec[indices[0]] if indices[0] > -1 else 1
+    inclination, azimuth = vec[indices[1]], vec[indices[2]]
     if degrees:
         inclination = np.deg2rad(inclination)
         azimuth = np.deg2rad(inclination)
@@ -197,7 +207,7 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     for a in invertaxis:
         idx = "xyz".index(a)
         res[idx] = -res[idx]
-    return np.vstack([res["xyz".index(a)] for a in cart]).T
+    return np.asarray([res["xyz".index(a)] for a in cart]).T
 
 
 def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
@@ -231,7 +241,7 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
         azimuth = np.rad2deg(azimuth)
         inclination = np.rad2deg(inclination)
     res = [np.sqrt(sum + np.square(z)), inclination, azimuth]
-    return np.vstack([res["ria".index(a)] for a in sph]).T
+    return np.asarray([res["ria".index(a)] for a in sph]).T
 
 
 class RigidTransform:
@@ -385,8 +395,8 @@ def get_perpendicular_rotation(source, dest, normalize=False):
     sounce = np.asarray(source)
     dest = np.asarray(dest)
     if normalize:
-        source /= np.linalg.norm(source, axis=-1, keepdims=True)
-        dest /= np.linalg.norm(dest, axis=-1, keepdims=True)
+        source = source / np.linalg.norm(source, axis=-1, keepdims=True)
+        dest = dest / np.linalg.norm(dest, axis=-1, keepdims=True)
     rotvec = np.cross(source, dest)
     norm = np.linalg.norm(rotvec, axis=-1, keepdims=True)
     dot = np.sum(source * dest,axis=-1, keepdims=True)
@@ -397,6 +407,53 @@ def get_perpendicular_rotation(source, dest, normalize=False):
 def get_distances(points, v0, v1, tr):
     t = np.zeros(len(points))
     points = points - tr[np.newaxis, :]
+
+
+class LinearTransformation:
+    def __init__(self, mat):
+        self.mat = mat
+
+    def inv(self):
+        return LinearTransformation(np.linalg.inv(self.mat))
+
+    def apply(self, points):
+        return points @ self.mat.T
+
+    def __mul__(self, other):
+        if isinstance(other, AffineTransformation):
+            return AffineTransformation(self) * other
+        return LinearTransformation(self.mat @ other.mat)
+
+
+class AffineTransformation:
+    def __init__(self, mat):
+        if isinstance(mat, Rotation):
+            self.mat = np.eye(4, dtype=float)
+            self.mat[0:3, 0:3] = mat.as_matrix()
+        elif isinstance(mat, LinearTransformation):
+            self.mat = np.eye(4, dtype=float)
+            self.mat[0:3, 0:3] = mat.mat
+        elif isinstance(mat, AffineTransformation):
+            self.mat = mat.mat
+        else:
+            self.mat = mat
+        if not isinstance(self.mat, np.ndarray):
+            raise Exception(f'Wrong matrix type {type(self.mat)}')
+
+    def inv(self):
+        return AffineTransformation(np.linalg.inv(self.mat))
+
+    def apply(self, points):
+        return (points @ self.mat[0:3, 0:3].T) + self.mat[0:3, 3]
+
+    def linear(self):
+        return LinearTransformation(self.mat[0:3, 0:3])
+
+    def __mul__(self, other):
+        if not isinstance(other, AffineTransformation):
+            other = AffineTransformation(other)
+        print(self.mat, other.mat)
+        return AffineTransformation(self.mat @ other.mat)
 
 
 class Reflection:
