@@ -436,9 +436,11 @@ class AffineTransformation:
         elif isinstance(mat, AffineTransformation):
             self.mat = mat.mat
         else:
-            self.mat = mat
+            self.mat = np.copy(mat)
         if not isinstance(self.mat, np.ndarray):
             raise Exception(f'Wrong matrix type {type(self.mat)}')
+        self.mat[3, 0:3] = 0
+        self.mat[3, 3] = 1
 
     def inv(self):
         return AffineTransformation(np.linalg.inv(self.mat))
@@ -452,7 +454,6 @@ class AffineTransformation:
     def __mul__(self, other):
         if not isinstance(other, AffineTransformation):
             other = AffineTransformation(other)
-        print(self.mat, other.mat)
         return AffineTransformation(self.mat @ other.mat)
 
 

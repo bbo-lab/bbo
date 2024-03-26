@@ -41,6 +41,22 @@ class TestCoordinateTransformations(unittest.TestCase):
             np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
 
 
+class TestAffineTransformation(unittest.TestCase):
+    def test_concatenation(self):
+        rnd = np.random.default_rng(1)
+        af0 = geometry.AffineTransformation(rnd.normal(size=(4,4)))
+        af1 = geometry.AffineTransformation(rnd.normal(size=(4,4)))
+        randvec = rnd.normal(size=3)
+        np.testing.assert_allclose((af1 * af0).apply(randvec), af1.apply(af0.apply(randvec)))
+
+
+    def test_constructor(self):
+        rnd = np.random.default_rng(1)
+        r = R.random()
+        randvec = rnd.normal(size=3)
+        np.testing.assert_allclose(geometry.AffineTransformation(r).apply(randvec), r.apply(randvec))
+
+
 class TestGeometryObjects(unittest.TestCase):
     def test_reflection(self):
         gen = np.random.default_rng(1)
