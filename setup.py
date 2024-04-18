@@ -9,7 +9,7 @@ README = (HERE / "README.md").read_text()
 # This call to setup() does all the work
 setup(
     name="bbo_bbo",
-    version="0.2.8",
+    version="0.2.9",
     description="Base tools for MPINB BBO group",
     long_description=README,
     long_description_content_type="text/markdown",
