@@ -162,10 +162,13 @@ def get_labels(labels, allow_empty=False):
         return [lm for lm in labels["labels"] if len(labels["labels"][lm].keys()) > 0]
 
 
-def get_labeled_frame_idxs(labels):
+def get_labeled_frame_idxs(labels, label_set=None):
     frames = set()
-    for ln in labels["labels"]:
-        frames.update(set(labels["labels"][ln].keys()))
+    if label_set is None:
+        label_set = labels["labels"].keys()
+    for ln in label_set:
+        if ln in labels["labels"]:
+            frames.update(set(labels["labels"][ln].keys()))
 
     return np.array(sorted(list(frames))).astype(int)
 
