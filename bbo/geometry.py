@@ -282,11 +282,16 @@ class RigidTransform:
     def get_translation(self):
         return self.translation
 
+    def isnan(self):
+        return np.logical_or(isnan_rot(self.rotation), np.any(np.isnan(self.translation),axis=-1))
 
 class Line:
-    def __init__(self, position, direction):
-        self.position = np.asarray(position, dtype=np.float64)
-        self.direction = np.asarray(direction, dtype=np.float64)
+    def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
+        if lines is not None:
+            position = [l.position for l in lines]
+            direction = [l.direction for l in lines]
+        self.position = np.asarray(position, dtype=dtype)
+        self.direction = np.asarray(direction, dtype=dtype)
         if not np.array_equal(self.position.shape, self.direction.shape):
             raise Exception("Shapes have to be equal")
         self.shape = self.position.shape
@@ -363,11 +368,11 @@ class Line:
 
 def get_homogenuous_transformation_from_mirror(normal, point_on_mirror):
     dim = len(normal)
-    H = get_mirror_matrix(normal)
-    A = np.hstack((H, 2 * np.asarray(point_on_mirror).reshape(-1, 1)))
-    T = np.zeros(shape=(dim + 1,))
-    T[-1] = 1
-    return np.vstack((A, T.reshape(1, -1)))
+    res = np.zeros((dim + 1, dim + 1),dtype=float)
+    res[0:3,0:3] = get_mirror_matrix(normal)
+    res[3,:3] = 2 * np.asarray(point_on_mirror)
+    res[3,3] = 1
+    return res
 
 
 def get_orthogonal(v):
@@ -517,6 +522,9 @@ class Mirror:
         if isinstance(other, Mirror):
             return Rotation.from_rotvec(np.cross(self.normal, other.normal))
         raise Exception(F'Type {type(other)} not supported')
+
+    def as_matrix(self):
+        return np.copy(HomTr)
 
     def rotate(self, rot):
         """
