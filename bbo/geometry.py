@@ -282,8 +282,9 @@ class RigidTransform:
         if isinstance(other, RigidTransform):
             return RigidTransform(rotation=multiply_rot(self.rotation, other.rotation),
                                   translation=self.rotation.apply(other.translation) + self.translation)
-        if isinstance(other, Mirror):
+        if isinstance(other, (Mirror, AffineTransformation)):
             return AffineTransformation(self.as_matrix() @ other.as_matrix())
+        raise Exception(f"Type of {other} not supported")
 
     def as_matrix(self, shape=None):
         if shape is None:
@@ -483,11 +484,7 @@ class AffineTransformation:
             self.mat[0:3, 0:3] = mat.mat
         elif isinstance(mat, AffineTransformation):
             self.mat = mat.mat
-        elif isinstance(mat, RigidTransform):
-            self.mat = mat.as_matrix(shape=(4, 4))
-        elif isinstance(mat, Reflection):
-            self.mat = mat.as_matrix(shape=(4, 4))
-        elif isinstance(mat, Mirror):
+        elif isinstance(mat, (RigidTransform, Reflection, Mirror)):
             self.mat = mat.as_matrix(shape=(4, 4))
         else:
             self.mat = np.copy(mat)
