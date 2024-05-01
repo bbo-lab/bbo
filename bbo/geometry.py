@@ -249,6 +249,12 @@ class RigidTransform:
         self.rotation = rotation
         self.translation = translation
 
+    @static_method
+    def from_matrix(self, matrix):
+        np.testing.assert_allclose(matrix[..., 0:4, 3], np.asarray(0, 0, 0, 1))
+        return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
+
+
     def apply(self, vec):
         return self.rotation.apply(vec) + self.translation
 
@@ -427,7 +433,7 @@ def get_perpendicular_rotation(source, dest, normalize=False):
     -------
 
     """
-    sounce = np.asarray(source)
+    source = np.asarray(source)
     dest = np.asarray(dest)
     if normalize:
         source = source / np.linalg.norm(source, axis=-1, keepdims=True)
@@ -491,6 +497,9 @@ class AffineTransformation:
 
     def linear(self):
         return LinearTransformation(self.mat[0:3, 0:3])
+
+    def as_matrix(self, shape=None):
+        return self.mat if shape is None else self.mat[..., shape[0], shape[1]]
 
     def __mul__(self, other):
         if not isinstance(other, AffineTransformation):
