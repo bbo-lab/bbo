@@ -253,7 +253,7 @@ class RigidTransform:
 
     @staticmethod
     def from_matrix(matrix):
-        np.testing.assert_allclose(matrix[..., 0:4, 3], np.asarray([0, 0, 0, 1]))
+        np.testing.assert_allclose(matrix[..., 3, 0:4], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
 
 
@@ -287,10 +287,12 @@ class RigidTransform:
 
     def as_matrix(self, shape=None):
         if shape is None:
-            shape = (4,4)
+            shape = (4, 4)
         res = np.zeros(shape=shape, dtype=float)
         res[0:3, 0:3] = self.rotation.as_matrix()
-        res[3, 0:3] = self.translation
+        res[0:3, 3] = self.translation
+        rg = np.arange(3, np.maximum(3, np.min(shape)))
+        res[(rg, rg)] = 1
         return res
 
     def inv(self):
@@ -504,7 +506,7 @@ class AffineTransformation:
         return LinearTransformation(self.mat[0:3, 0:3])
 
     def as_matrix(self, shape=None):
-        return self.mat if shape is None else self.mat[..., shape[0], shape[1]]
+        return self.mat if shape is None else self.mat[..., 0:shape[0], 0:shape[1]]
 
     def __mul__(self, other):
         if not isinstance(other, AffineTransformation):
@@ -530,8 +532,10 @@ class Reflection:
         res = np.eye(len(self.normal)) - 2 * np.outer(self.normal, self.normal)
         if shape is not None:
             tmp = np.zeros(shape=shape, dtype=float)
-            tmp[0:3,0:3] = res
+            tmp[0:3, 0:3] = res
             res = tmp
+            rg = np.arange(3, np.maximum(3, np.min(shape)))
+            res[(rg, rg)] = 1
         return res
 
     def __mul__(self, other):

@@ -41,16 +41,19 @@ class TestCoordinateTransformations(unittest.TestCase):
             np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
 
     def test_chain(self):
-        headcam2headcammirrored = AffineTransformation(mirrors_headcam[i_cam])
-        headcam2subcam_trafo = RigidTransform(rotation=Rotation.from_rotvec(calib["rvec_cam"].copy()),
-                                              translation=calib["tvec_cam"].copy())
-        subcam2subcammirrored = AffineTransformation(Reflection(normal=np.array([1, 0, 0])))
-        cam_trafo = RigidTransform.from_matrix(
-            (subcam2subcammirrored * headcam2subcam_trafo * headcam2headcammirrored).as_matrix())
-
+        rnd = np.random.default_rng(1)
+        mirror0 = geometry.AffineTransformation(geometry.Mirror(normal=rnd.normal(size=3), tr=rnd.normal()))
+        rigid0 = geometry.RigidTransform(rotation=R.from_rotvec(rnd.normal(size=3)), translation=rnd.normal(size=3))
+        mirror1 = geometry.AffineTransformation(geometry.Reflection(normal=np.array([1, 0, 0])))
         point = np.array([1, 2, 3])
-        print(cam_trafo.apply(point))
-        print(subcam2subcammirrored.apply(headcam2subcam_trafo.apply(headcam2headcammirrored.apply(point))))
+        ppoint = np.asarray([1,2,3,1])
+        np.testing.assert_allclose(mirror0.apply(point), (mirror0.as_matrix(shape=(3, 4)) @ ppoint))
+        np.testing.assert_allclose(rigid0.apply(point), (rigid0.as_matrix(shape=(3, 4)) @ ppoint))
+        np.testing.assert_allclose(mirror1.apply(point), (mirror1.as_matrix(shape=(3, 4)) @ ppoint))
+        combined = geometry.RigidTransform.from_matrix((mirror0 * rigid0 * mirror1).as_matrix())
+
+        np.testing.assert_allclose(combined.apply(point), mirror0.apply(rigid0.apply(mirror1.apply(point))))
+
 
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
