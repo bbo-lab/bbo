@@ -285,6 +285,26 @@ class RigidTransform:
     def isnan(self):
         return np.logical_or(isnan_rot(self.rotation), np.any(np.isnan(self.translation),axis=-1))
 
+    @staticmethod
+    def concatenate(list):
+        return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]), translation=np.asarray([tr.translation for tr in list]))
+
+    def as_map(self):
+        rot = self.rotation.as_quat()
+        return {
+            'x': self.translation[:, 0],
+            'y': self.translation[:, 1],
+            'z': self.translation[:, 2],
+            'rx': rot[:, 0],
+            'ry': rot[:, 1],
+            'rz': rot[:, 2],
+            'rw': rot[:, 3]}
+
+    @staticmethod
+    def from_map(self, map):
+        return RigidTransform(rotation=R.from_quat((map['xr'],ap['yr'],ap['zr'],ap['wr'])),
+                              translation=np.asarray((map['x'],map['y'],map['z'])))
+
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
         if lines is not None:
