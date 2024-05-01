@@ -252,7 +252,7 @@ class RigidTransform:
     def apply(self, vec):
         return self.rotation.apply(vec) + self.translation
 
-    def __getitem(self, key):
+    def __getitem__(self, key):
         return RigidTransform(rotation=self.rotation[key], translation=self.translation[key])
 
     def __setitem__(self, index, value):
@@ -271,6 +271,16 @@ class RigidTransform:
         if isinstance(other, RigidTransform):
             return RigidTransform(rotation=multiply_rot(self.rotation, other.rotation),
                                   translation=self.rotation.apply(other.translation) + self.translation)
+        if isinstance(other, Mirror):
+            return AffineTransformation(self.as_matrix() @ other.as_matrix())
+
+    def as_matrix(self, full=True):
+        res = np.zeros(shape=(4 if full else 3, 4), dtype=float)
+        res[0:3,0:3] = self.rotation.as_matrix()
+        res[3,0:3] = self.translation
+        if full:
+            res[3,3] = 1
+        return res
 
     def inv(self):
         rotinv = inverse_rot(self.rotation)
@@ -460,6 +470,8 @@ class AffineTransformation:
             self.mat[0:3, 0:3] = mat.mat
         elif isinstance(mat, AffineTransformation):
             self.mat = mat.mat
+        elif isinstance(mat, RigidTransform):
+            self.mat = mat.as_matrix()
         else:
             self.mat = np.copy(mat)
         if not isinstance(self.mat, np.ndarray):
