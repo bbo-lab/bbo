@@ -412,10 +412,10 @@ class Line:
 
 def get_homogenuous_transformation_from_mirror(normal, point_on_mirror):
     dim = len(normal)
-    res = np.zeros((dim + 1, dim + 1),dtype=float)
-    res[0:3,0:3] = get_mirror_matrix(normal)
-    res[3,:3] = 2 * np.asarray(point_on_mirror)
-    res[3,3] = 1
+    res = np.zeros((dim + 1, dim + 1), dtype=float)
+    res[0:3, 0:3] = get_mirror_matrix(normal)
+    res[:3, 3] = 2 * np.asarray(point_on_mirror)
+    res[3, 3] = 1
     return res
 
 
