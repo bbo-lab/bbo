@@ -245,18 +245,23 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
 
 
 class RigidTransform:
-    def __init__(self, rotation=Rotation.identity(), translation=np.zeros(shape=(1, 3))):
+    def __init__(self, rotation: Rotation = Rotation.identity(), translation=None):
+        if translation is None:
+            translation = np.zeros(shape=(1, 3))
         self.rotation = rotation
         self.translation = translation
 
-    @static_method
-    def from_matrix(self, matrix):
-        np.testing.assert_allclose(matrix[..., 0:4, 3], np.asarray(0, 0, 0, 1))
+    @staticmethod
+    def from_matrix(matrix):
+        np.testing.assert_allclose(matrix[..., 0:4, 3], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
 
 
     def apply(self, vec):
         return self.rotation.apply(vec) + self.translation
+
+    def apply_vector(self, vec):
+        return self.rotation.apply(vec)
 
     def __getitem__(self, key):
         return RigidTransform(rotation=self.rotation[key], translation=self.translation[key])
@@ -524,7 +529,7 @@ class Reflection:
     def as_matrix(self, shape=None):
         res = np.eye(len(self.normal)) - 2 * np.outer(self.normal, self.normal)
         if shape is not None:
-            tmp = np.zeros(shape=shape, dtype=dtype)
+            tmp = np.zeros(shape=shape, dtype=float)
             tmp[0:3,0:3] = res
             res = tmp
         return res
@@ -574,7 +579,7 @@ class Mirror:
         raise Exception(F'Type {type(other)} not supported')
 
     def as_matrix(self, shape=None):
-        return np.copy(HomTr)
+        return np.copy(self.HomTr)
 
     def rotate(self, rot):
         """
@@ -588,6 +593,17 @@ class Mirror:
 
     def translate(self, tr):
         return Mirror(normal=np.copy(self.normal), point_on_mirror=self.point_on_mirror + tr)
+
+    def transform(self, rot_traf, tr=None):
+        if tr is None:
+            tr = np.zeros((1,3))
+        if isinstance(rot_traf, Rotation):
+            rot_traf = RigidTransform(rotation=rot_traf, translation=tr)
+        print(self.point_on_mirror)
+        print(rot_traf.apply(self.point_on_mirror))
+        return Mirror(normal=rot_traf.apply_vector(self.normal),
+                      point_on_mirror=rot_traf.apply(self.point_on_mirror).reshape((3,)))
+
 
     def set_tr(self, tr):
         self.__init__(self.normal, tr=tr)

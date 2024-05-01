@@ -40,6 +40,17 @@ class TestCoordinateTransformations(unittest.TestCase):
             sph = geometry.cart2spherical(cart)
             np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
 
+    def test_chain(self):
+        headcam2headcammirrored = AffineTransformation(mirrors_headcam[i_cam])
+        headcam2subcam_trafo = RigidTransform(rotation=Rotation.from_rotvec(calib["rvec_cam"].copy()),
+                                              translation=calib["tvec_cam"].copy())
+        subcam2subcammirrored = AffineTransformation(Reflection(normal=np.array([1, 0, 0])))
+        cam_trafo = RigidTransform.from_matrix(
+            (subcam2subcammirrored * headcam2subcam_trafo * headcam2headcammirrored).as_matrix())
+
+        point = np.array([1, 2, 3])
+        print(cam_trafo.apply(point))
+        print(subcam2subcammirrored.apply(headcam2subcam_trafo.apply(headcam2headcammirrored.apply(point))))
 
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):

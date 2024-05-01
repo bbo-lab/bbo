@@ -458,6 +458,7 @@ def to_numpy(labels,
     for i_lm, lm in enumerate(extract_labels):
         if lm in labels["labels"]:
             for i_fr, fr_idx in enumerate(extract_frame_idxs):
+                # print("===== fr: ", fr_idx)
                 # Map identities
                 if label_identity is not None and label_identity[i_lm] is not None:
                     lm_idx = extract_labels.index(label_identity[i_lm])
@@ -465,8 +466,10 @@ def to_numpy(labels,
                     lm_idx = i_lm
 
                 for i_cam in range(cams_n):
+                    # print("Cam ", i_cam)
                     cam_time = time_bases[i_cam][i_fr]
                     time_base_idx = np.where(time_base == cam_time)[0][0]
+                    # print("Time idx:", time_base_idx)
                     if fr_idx in labels["labels"][lm]:
                         cam_coords = labels["labels"][lm][fr_idx][i_cam]
                         if not np.any(np.isnan(cam_coords)):
