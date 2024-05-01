@@ -274,12 +274,12 @@ class RigidTransform:
         if isinstance(other, Mirror):
             return AffineTransformation(self.as_matrix() @ other.as_matrix())
 
-    def as_matrix(self, full=True):
-        res = np.zeros(shape=(4 if full else 3, 4), dtype=float)
-        res[0:3,0:3] = self.rotation.as_matrix()
-        res[3,0:3] = self.translation
-        if full:
-            res[3,3] = 1
+    def as_matrix(self, shape=None):
+        if shape is None:
+            shape = (4,4)
+        res = np.zeros(shape=shape, dtype=float)
+        res[0:3, 0:3] = self.rotation.as_matrix()
+        res[3, 0:3] = self.translation
         return res
 
     def inv(self):
@@ -471,7 +471,11 @@ class AffineTransformation:
         elif isinstance(mat, AffineTransformation):
             self.mat = mat.mat
         elif isinstance(mat, RigidTransform):
-            self.mat = mat.as_matrix()
+            self.mat = mat.as_matrix(shape=(4, 4))
+        elif isinstance(mat, Reflection):
+            self.mat = mat.as_matrix(shape=(4, 4))
+        elif isinstance(mat, Mirror):
+            self.mat = mat.as_matrix(shape=(4, 4))
         else:
             self.mat = np.copy(mat)
         if not isinstance(self.mat, np.ndarray):
@@ -508,8 +512,13 @@ class Reflection:
     def apply(self, vec):
         return vec - np.inner(self.normal, vec) * self.normal * 2
 
-    def as_matrix(self):
-        return np.eye(len(self.normal)) - 2 * np.outer(self.normal, self.normal)
+    def as_matrix(self, shape=None):
+        res = np.eye(len(self.normal)) - 2 * np.outer(self.normal, self.normal)
+        if shape is not None:
+            tmp = np.zeros(shape=shape, dtype=dtype)
+            tmp[0:3,0:3] = res
+            res = tmp
+        return res
 
     def __mul__(self, other):
         if isinstance(other, Reflection):
@@ -555,7 +564,7 @@ class Mirror:
             return Rotation.from_rotvec(np.cross(self.normal, other.normal))
         raise Exception(F'Type {type(other)} not supported')
 
-    def as_matrix(self):
+    def as_matrix(self, shape=None):
         return np.copy(HomTr)
 
     def rotate(self, rot):
