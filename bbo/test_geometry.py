@@ -54,6 +54,19 @@ class TestCoordinateTransformations(unittest.TestCase):
 
         np.testing.assert_allclose(combined.apply(point), mirror0.apply(rigid0.apply(mirror1.apply(point))))
 
+    def test_chain2(self):
+        p = np.array([0.0469684, 0.01482834, 0.02264933])
+        c2mat = np.array([[0.91473842, 0.25885081, -0.31024167, -0.03067625],
+                          [-0.25559285, 0.9653921, 0.051869, 0.00787602],
+                          [0.31293119, 0.03184898, 0.94924165, -0.01050296],
+                          [0., 0., 0., 1.]])
+        pom = np.array([0.05074815, -0.00380419, 0.00532293])
+        normal = np.array([-0.92910703, 0.23916482, -0.28206437])
+
+        c2t = geometry.RigidTransform.from_matrix(c2mat)
+        m = geometry.Mirror(point_on_mirror=pom, normal=normal)
+
+        np.testing.assert_allclose((c2t * m).apply(p), c2t.apply(m.apply_on_point(p)))
 
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
