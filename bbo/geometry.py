@@ -215,8 +215,8 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
     Norm gives the length of the incoming vector
-    Inclination rotates around the Longitude on the x-y-plane
-    Elevation gives the rotaton for x-y-plane to z
+    Inclination gives the rotaton for x-y-plane to z
+    Azimuth rotates around the Longitude on the x-y-plane
     Parameters
     ----------
     vec
