@@ -410,11 +410,11 @@ class Line:
         return RaveledLine(position=self.position, direction=self.direction)
 
 
-def get_homogenuous_transformation_from_mirror(normal, point_on_mirror):
+def get_homogenuous_transformation_from_mirror(normal, translation):
     dim = len(normal)
     res = np.zeros((dim + 1, dim + 1), dtype=float)
     res[0:3, 0:3] = get_mirror_matrix(normal)
-    res[:3, 3] = 2 * np.asarray(point_on_mirror)
+    res[:3, 3] = np.asarray(normal) * translation
     res[3, 3] = 1
     return res
 
@@ -560,7 +560,7 @@ class Mirror:
 
         self.M = get_mirror_matrix(self.normal)
         self.translation = np.asarray(self.point_on_mirror) * 2
-        self.HomTr = get_homogenuous_transformation_from_mirror(self.normal, self.point_on_mirror)
+        self.HomTr = get_homogenuous_transformation_from_mirror(self.normal, self.translation)
 
     def __mul__(self, other):
         """
@@ -600,8 +600,6 @@ class Mirror:
             tr = np.zeros((1,3))
         if isinstance(rot_traf, Rotation):
             rot_traf = RigidTransform(rotation=rot_traf, translation=tr)
-        print(self.point_on_mirror)
-        print(rot_traf.apply(self.point_on_mirror))
         return Mirror(normal=rot_traf.apply_vector(self.normal),
                       point_on_mirror=rot_traf.apply(self.point_on_mirror).reshape((3,)))
 
@@ -612,6 +610,11 @@ class Mirror:
     def apply_on_point(self, points):
         res = np.dot(self.M, points.T).T + (self.normal * (self.tr * 2))[np.newaxis, :]
         return res
+
+    def apply(self, points):
+        mirrored = np.dot(self.M, points.T).T
+        translation = (self.normal * (self.tr * 2))
+        return mirrored + translation[tuple([slice(np.newaxis)] * (mirrored.ndim - translation.ndim))]
 
     def apply_on_vector(self, vectors):
         return np.dot(self.M, vectors.T).T
