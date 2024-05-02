@@ -599,7 +599,7 @@ class Mirror:
             tr = np.zeros((1,3))
         if isinstance(rot_traf, Rotation):
             rot_traf = RigidTransform(rotation=rot_traf, translation=tr)
-        return Mirror(normal=rot_traf.apply_vector(self.normal),
+        return Mirror(normal=rot_traf.apply_on_vector(self.normal),
                       point_on_mirror=rot_traf.apply(self.point_on_mirror).reshape((3,)))
 
 
