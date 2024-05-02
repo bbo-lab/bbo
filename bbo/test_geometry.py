@@ -46,7 +46,7 @@ class TestCoordinateTransformations(unittest.TestCase):
         rigid0 = geometry.RigidTransform(rotation=R.from_rotvec(rnd.normal(size=3)), translation=rnd.normal(size=3))
         mirror1 = geometry.AffineTransformation(geometry.Reflection(normal=np.array([1, 0, 0])))
         point = np.array([1, 2, 3])
-        ppoint = np.asarray([1,2,3,1])
+        ppoint = np.asarray([1, 2, 3, 1])
         np.testing.assert_allclose(mirror0.apply(point), (mirror0.as_matrix(shape=(3, 4)) @ ppoint))
         np.testing.assert_allclose(rigid0.apply(point), (rigid0.as_matrix(shape=(3, 4)) @ ppoint))
         np.testing.assert_allclose(mirror1.apply(point), (mirror1.as_matrix(shape=(3, 4)) @ ppoint))
@@ -55,21 +55,27 @@ class TestCoordinateTransformations(unittest.TestCase):
         np.testing.assert_allclose(combined.apply(point), mirror0.apply(rigid0.apply(mirror1.apply(point))))
 
     def test_chain2(self):
+        def run_on_data(c2t, pom, normal, p):
+            m = geometry.Mirror(point_on_mirror=pom, normal=normal)
+            np.testing.assert_allclose((c2t * m).apply(p), c2t.apply(m.apply(p)))
 
         #Rigid Transformation
         c2mat = np.array([[0, 1, 0, 2],
                           [-1, 0, 0, 3],
                           [0, 0, 1, 4],
                           [0, 0, 0, 1]])
-        c2t = geometry.RigidTransform.from_matrix(c2mat)
+        run_on_data(
+            c2t=geometry.RigidTransform.from_matrix(c2mat),
+            pom=np.array([1, 2, 3]),
+            normal=np.array([0, 1, 0]),
+            p=np.array([1, 5, 8]))
 
-        #Mirror
-        pom = np.array([1, 2, 3])
-        normal = np.array([0, 1, 0])
-        m = geometry.Mirror(point_on_mirror=pom, normal=normal)
-
-        p = np.array([1, 5, 8])
-        np.testing.assert_allclose((c2t * m).apply(p), c2t.apply(m.apply(p)))
+        rnd = np.random.default_rng(1)
+        run_on_data(
+            c2t=geometry.RigidTransform(rotation=R.random(random_state=rnd),translation=rnd.normal(size=3)),
+            pom=rnd.normal(size=3),
+            normal=rnd.normal(size=3),
+            p=rnd.normal(size=3))
 
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
