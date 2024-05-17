@@ -378,10 +378,9 @@ class RigidTransform:
             'rw': rot[:, 3]}
 
     @staticmethod
-    def from_map(self, map):
-        return RigidTransform(rotation=R.from_quat((map['xr'], ap['yr'], ap['zr'], ap['wr'])),
-                              translation=np.asarray((map['x'], map['y'], map['z'])))
-
+    def from_map(map, suffix=""):
+        return RigidTransform(rotation=Rotation.from_quat((map[np.char.add(['rx', 'ry', 'rz', 'rw'], suffix)])),
+                              translation=np.asarray((map[np.char.add(['x', 'y', 'z'], suffix)])))
 
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
