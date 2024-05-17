@@ -136,7 +136,7 @@ def apply_rot(r, vec):
 
 
 def divlim(divident, divisor):
-    return np.divide(divident, divisor, np.zeros_like(divident), where=np.logical_or(divident!=0,divisor!=0))
+    return np.divide(divident, divisor, np.zeros_like(divident), where=np.logical_or(divident != 0, divisor != 0))
 
 
 def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
@@ -147,7 +147,7 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     for a in invertaxis:
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
-    x,y,z = vec
+    x, y, z = vec
     length = np.square(x) + np.square(y)
     norm = np.sqrt(length + np.square(z))
     length = np.sqrt(length)
@@ -245,9 +245,25 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
 
 
 class RigidTransform:
-    def __init__(self, rotation: Rotation = Rotation.identity(), translation=None):
+    def __init__(self, rotation: Rotation = Rotation.identity(), translation=None, rotation_type=None):
         if translation is None:
             translation = np.zeros(shape=(1, 3))
+        if isinstance(rotation, np.ndarray):
+            rs = rotation.shape
+            # TODO: Use translation length for further identification if possible
+            if rotation_type == "quaternion" or rs[-1] == 4:
+                rotation = Rotation.from_quat(rotation)
+            elif rotation_type == "matrix" or len(rs) == 3 and rs[-1] == 3 and rs[-2] == 3:
+                rotation = Rotation.from_matrix(rotation)
+            elif rotation_type == "rotvec" or len(rs) == 2 and rs[-1] == 3 and not rs[-2] == 3:
+                # Note that this indistinguishable form euler, which we generally do not support
+                rotation = Rotation.from_rotvec(rotation)
+            elif len(rs) == 1 and rs[-1] == 3:
+                # Note that this indistinguishable form euler, which we generally do not support
+                rotation = Rotation.from_rotvec(rotation)
+            else:
+                raise ValueError(f"Could not reliably determine type of rotation: {rs}")
+
         self.rotation = rotation
         self.translation = translation
 
@@ -256,12 +272,48 @@ class RigidTransform:
         np.testing.assert_allclose(matrix[..., 3, 0:4], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
 
-
     def apply(self, vec):
-        return self.rotation.apply(vec) + self.translation
+        vec_shape = vec.shape
+        if len(vec_shape) > 2:
+            vec = vec.reshape((-1, vec_shape[-1]))
+
+        new_vec = self.rotation.apply(vec) + self.translation
+
+        if len(vec_shape) > 2:
+            new_vec = new_vec.reshape(vec_shape)
+        return new_vec
+
+    def apply_broadcast(self, vec):
+        # Return a [shape transforms] x [shape vecs] array of vectors
+        new_vec = self.rotate_broadcast(vec)
+
+        #Fill in singular dimensions
+        translations = np.expand_dims(self.translation,
+                                      [self.translation.ndim - 1 + n for n in range(vec.ndim - 1)])
+        new_vec += translations
+
+        return new_vec
+
+    def rotate_broadcast(self, vec):
+        rot_mats = self.rotation.as_matrix()
+        # Somehow was unsuccessful with ellipsis ...
+        matrices_subscript = ''.join(chr(ord('a') + i) for i in range(rot_mats.ndim - 2))
+        vectors_subscript = ''.join(chr(ord('a') + rot_mats.ndim - 2 + i) for i in range(vec.ndim - 1))
+        einsum = f'{matrices_subscript}ij,{vectors_subscript}j->{matrices_subscript}{vectors_subscript}i'
+        new_vec = np.einsum(einsum, rot_mats, vec)
+        return new_vec
 
     def apply_on_vector(self, vec):
-        return self.rotation.apply(vec)
+        vec_shape = vec
+        if len(vec_shape) > 2:
+            vec = vec.reshape((-1, vec_shape[-1]))
+
+        new_vec = self.rotation.apply(vec)
+
+        if len(vec_shape) > 2:
+            new_vec = new_vec.reshape(vec_shape)
+
+        return new_vec
 
     def __getitem__(self, key):
         return RigidTransform(rotation=self.rotation[key], translation=self.translation[key])
@@ -307,11 +359,12 @@ class RigidTransform:
         return self.translation
 
     def isnan(self):
-        return np.logical_or(isnan_rot(self.rotation), np.any(np.isnan(self.translation),axis=-1))
+        return np.logical_or(isnan_rot(self.rotation), np.any(np.isnan(self.translation), axis=-1))
 
     @staticmethod
     def concatenate(list):
-        return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]), translation=np.asarray([tr.translation for tr in list]))
+        return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]),
+                              translation=np.asarray([tr.translation for tr in list]))
 
     def as_map(self):
         rot = self.rotation.as_quat()
@@ -326,8 +379,9 @@ class RigidTransform:
 
     @staticmethod
     def from_map(self, map):
-        return RigidTransform(rotation=R.from_quat((map['xr'],ap['yr'],ap['zr'],ap['wr'])),
-                              translation=np.asarray((map['x'],map['y'],map['z'])))
+        return RigidTransform(rotation=R.from_quat((map['xr'], ap['yr'], ap['zr'], ap['wr'])),
+                              translation=np.asarray((map['x'], map['y'], map['z'])))
+
 
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
@@ -448,7 +502,7 @@ def get_perpendicular_rotation(source, dest, normalize=False):
         dest = dest / np.linalg.norm(dest, axis=-1, keepdims=True)
     rotvec = np.cross(source, dest)
     norm = np.linalg.norm(rotvec, axis=-1, keepdims=True)
-    dot = np.sum(source * dest,axis=-1, keepdims=True)
+    dot = np.sum(source * dest, axis=-1, keepdims=True)
     rotvec *= np.divide(np.arccos(dot), norm, where=norm > 1e-10)
     return Rotation.from_rotvec(rotvec, degrees=False)
 
@@ -596,12 +650,11 @@ class Mirror:
 
     def transform(self, rot_traf, tr=None):
         if tr is None:
-            tr = np.zeros((1,3))
+            tr = np.zeros((1, 3))
         if isinstance(rot_traf, Rotation):
             rot_traf = RigidTransform(rotation=rot_traf, translation=tr)
         return Mirror(normal=rot_traf.apply_on_vector(self.normal),
                       point_on_mirror=rot_traf.apply(self.point_on_mirror).reshape((3,)))
-
 
     def set_tr(self, tr):
         self.__init__(self.normal, tr=tr)
