@@ -1,6 +1,7 @@
 import numpy as np
+import scipy.spatial.transform
 from scipy.spatial.transform import Rotation
-
+from scipy.spatial.transform import Slerp
 
 def get_mirror_matrix(normal):
     normal = np.asarray(normal)
@@ -381,6 +382,52 @@ class RigidTransform:
     def from_map(map, suffix=""):
         return RigidTransform(rotation=Rotation.from_quat((map[np.char.add(['rx', 'ry', 'rz', 'rw'], suffix)])),
                               translation=np.asarray((map[np.char.add(['x', 'y', 'z'], suffix)])))
+
+    def interpolate(self, times, fill_boundary="nan", interpolation_method="linear"):
+        rotation_interpolation = slerp(times, self.rotation, fill_boundary=fill_boundary, interpolation_method=interpolation_method)
+        translation_interpolation = [scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False, fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
+        return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
+
+
+
+@staticmethod
+def slerp(times, rots, fill_boundary="nan", interpolation_method="linear"):
+    match interpolation_method:
+        case "nearest":
+            ctimes = np.convolve(times, (0.5, 0.5), mode="valid")
+
+            def find_nearest(etimes):
+                idx = np.searchsorted(ctimes, etimes, side="left")
+                return rots[idx]
+
+            interp = find_nearest
+        case "linear":
+            mask = ~isnan_rot(rots)
+            ctimes = times[mask]
+            interp = Slerp(ctimes, rots[mask])
+        case "quadratic":
+            mask = np.logical_not(isnan_rot(rots))
+            ctimes = times[mask]
+            interp = RotationSpline(ctimes, rots[mask])
+        case _:
+            raise Exception(f"Interpolation method {interpolation_method} not known")
+
+    tmin, tmax = ctimes[0], ctimes[-1]
+
+    def funct(interptimes):
+        tclipped = np.clip(interptimes, a_min=tmin, a_max=tmax)
+        res = interp(tclipped)
+        match fill_boundary:
+            case "nan":
+                replace_mask = tclipped != interptimes
+                res[replace_mask] = Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
+            case "constant":
+                pass
+            case _:
+                raise Exception(f"Boundary {fill_boundary} not known")
+        return res
+
+    return funct
 
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
