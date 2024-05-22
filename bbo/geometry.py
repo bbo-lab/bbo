@@ -305,7 +305,7 @@ class RigidTransform:
         return new_vec
 
     def apply_on_vector(self, vec):
-        vec_shape = vec
+        vec_shape = vec.shape
         if len(vec_shape) > 2:
             vec = vec.reshape((-1, vec_shape[-1]))
 
