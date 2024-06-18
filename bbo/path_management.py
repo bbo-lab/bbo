@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import yaml
 import sys
+import re
 
 
 def get_custom_replace_dict():
@@ -51,5 +52,45 @@ def get_default_replace_dict():
     return default_replace_dict
 
 
-def get_replace_dict():
-    return get_default_replace_dict() | get_custom_replace_dict()
+def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False):
+    replace_dict = get_default_replace_dict() | get_custom_replace_dict()
+
+    if with_brackets:
+        replace_dict = {f"{{{k}}}": v for k, v in replace_dict.items()}
+
+    if no_trailing_slash:
+        replace_dict = remove_trailing_slashes(replace_dict)
+
+    if inverse:
+        replace_dict = get_inverse_dict(replace_dict)
+
+    return replace_dict
+
+
+def replace_by_dict(text, replace_dict=None, inverse=False):
+    if replace_dict is None:
+        replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True)
+
+    if inverse:
+        replace_dict = get_inverse_dict(replace_dict)
+
+    pattern = re.compile("|".join(re.escape(key) for key in replace_dict.keys()))
+
+    def replace_match(match):
+        return replace_dict[match.group(0)]
+
+    return pattern.sub(replace_match, text)
+
+
+def remove_trailing_slashes(replace_dict):
+    new_replace_dict = {}
+    for key, value in replace_dict.items():
+        if value[-1] == "/":
+            value = value[:-1]
+        new_replace_dict[key] = value
+
+    return new_replace_dict
+
+
+def get_inverse_dict(replace_dict):
+    return {v: k for k, v in replace_dict.items()}

@@ -1,0 +1,82 @@
+import hashlib
+from bbo import path_management
+
+
+header_version = 0.1
+
+
+def check_header(file, recursive=None):
+    return check_header(file, recursive)
+
+
+def check_dep_header(file, recursive=None):
+    if recursive is None:
+        recursive = False
+
+    dep_headers = {}
+    with open(file, 'r') as f:
+        for line in f:
+            if line.startswith('#'):
+                key, value = line[2:].split(':', 1)
+                if key.startswith('dep-'):
+                    (key_type, key) = key[4:].split('_', 1)
+                else:
+                    continue
+                if key not in dep_headers:
+                    dep_headers[key] = {}
+                dep_headers[key][key_type] = value.strip()
+
+    for key in dep_headers:
+        dep_file = path_management.replace_by_dict(dep_headers[key]["file"])
+        dep_hash = dep_headers[key]['hash']
+        if not calculate_sha256(dep_file) == dep_hash:
+            raise DependencyError(f"Dependency {key}: {dep_file} does not have the correct sha256 hash {dep_hash}",
+                                  file)
+        if recursive is True:
+            check_dep_header(file, recursive=True)
+        elif isinstance(recursive, int) and recursive > 0:
+            check_dep_header(file, recursive=recursive - 1)
+
+    return True
+
+
+def make_header(dep_dict=None, do_path_management=True):
+    header_dict = make_header_dict(dep_dict=dep_dict, do_path_management=do_path_management)
+    return "".join([f"# {k}: {v}\n" for k, v in header_dict.items()])
+
+
+def make_header_dict(dep_dict=None, do_path_management=True):
+    if dep_dict is None:
+        dep_dict = {}
+
+    header_dict = make_dep_header_dict(dep_dict, do_path_management=do_path_management)
+    header_dict["header_version"] = header_version
+
+    return header_dict
+
+
+def make_dep_header_dict(dep_dict, do_path_management=True):
+    header = {}
+    for key in dep_dict:
+        if do_path_management:
+            dep_file = path_management.replace_by_dict(dep_dict[key], inverse=True)
+        else:
+            dep_file = dep_dict[key]
+        header["dep-file_" + key] = dep_file
+        header["dep-hash_" + key] = calculate_sha256(dep_dict[key])
+
+    return header
+
+
+def calculate_sha256(file_path):
+    sha256_hash = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
+class DependencyError(Exception):
+    def __init__(self, msg, file):
+        self.msg = msg
+        self.file = file
