@@ -68,6 +68,12 @@ def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False
 
 
 def replace_by_dict(text, replace_dict=None, inverse=False):
+    is_path = False
+    if isinstance(text, Path):
+        text = text.as_posix()
+        is_path = True
+
+
     if replace_dict is None:
         replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True)
 
@@ -78,6 +84,9 @@ def replace_by_dict(text, replace_dict=None, inverse=False):
 
     def replace_match(match):
         return replace_dict[match.group(0)]
+
+    if is_path:
+        text = Path(text)
 
     return pattern.sub(replace_match, text)
 
