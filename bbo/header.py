@@ -10,8 +10,13 @@ def check_header(file, recursive=None):
 
 
 def check_dep_header(file, recursive=None):
+    # Recursive may be bool or an integer to
     if recursive is None:
         recursive = False
+
+    with open(file, 'rb') as f:
+        if f.read(1) != b'#':
+            raise NoDependencyHeaderError(f"{file} does not have a dependency header", file)
 
     dep_headers = {}
     with open(file, 'r') as f:
@@ -32,10 +37,14 @@ def check_dep_header(file, recursive=None):
         if not calculate_sha256(dep_file) == dep_hash:
             raise DependencyError(f"Dependency {key}: {dep_file} does not have the correct sha256 hash {dep_hash}",
                                   file)
-        if recursive is True:
-            check_dep_header(file, recursive=True)
-        elif isinstance(recursive, int) and recursive > 0:
-            check_dep_header(file, recursive=recursive - 1)
+
+        try:
+            if recursive is True:
+                check_dep_header(dep_file, recursive=True)
+            elif isinstance(recursive, int) and recursive > 0:
+                check_dep_header(dep_file, recursive=recursive - 1)
+        except NoDependencyHeaderError:
+            pass
 
     return True
 
@@ -80,3 +89,6 @@ class DependencyError(Exception):
     def __init__(self, msg, file):
         self.msg = msg
         self.file = file
+
+class NoDependencyHeaderError(DependencyError):
+    pass
