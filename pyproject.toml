@@ -7,7 +7,7 @@ name = "bbo-bbo"
 dynamic = ["version"]
 description = "Base tools for MPINB BBO group"
 readme = "README.md"
-license = "BSD"
+license = {text = "BSD-3-Clause"}
 authors = [
     { name = "BBO-lab @ caesar", email = "kay-michael.voit@caesar.de" },
 ]
@@ -32,3 +32,6 @@ path = "bbo/__init__.py"
 include = [
     "/bbo",
 ]
+
+[tool.hatch.build.targets.wheel]
+      packages = ["bbo"]
