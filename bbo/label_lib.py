@@ -89,10 +89,11 @@ def labels_to_acm(labels):
 
 
 def load(file_path, load_npz=False):
+    print(file_path)
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
-    if file_path.with_suffix(".yml").is_file():
+    if file_path.with_suffix(".yml").is_file() and not load_npz and file_path.suffix == ".npz":
         file_path = file_path.with_suffix(".yml")
         try:
             with open(file_path.as_posix(), 'r') as f:
