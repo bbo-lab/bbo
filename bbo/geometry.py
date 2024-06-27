@@ -388,6 +388,12 @@ class RigidTransform:
         translation_interpolation = [scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False, fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
         return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
 
+    def mean(self):
+        return RigidTransform(rotation=self.rotation.mean(), translation=np.average(self.translation, axis=0))
+
+    def nanmean(self, keepdims=False):
+        valid = np.logical_not(self.isnan())
+        return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid])
 
 
 @staticmethod
