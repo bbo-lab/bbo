@@ -5,6 +5,9 @@ import yaml
 import itertools
 from bbo.exceptions import NoDataException
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def ndarray_representer(dumper: yaml.Dumper, array: np.ndarray) -> yaml.Node:
@@ -89,19 +92,18 @@ def labels_to_acm(labels):
 
 
 def load(file_path, load_npz=False):
-    print(file_path)
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
-    if file_path.with_suffix(".yml").is_file() and not load_npz and file_path.suffix == ".npz":
+    if file_path.with_suffix(".yml").is_file() and not (load_npz and file_path.suffix == ".npz"):
         file_path = file_path.with_suffix(".yml")
         try:
             with open(file_path.as_posix(), 'r') as f:
                 labels = read_label_yaml(f)
         except Exception as e:
             # Fall back to very slow pyyaml reader
-            print("WARNING: Fallback to pyYAML")
-            print(e)
+            logger.log(logging.WARN, "WARNING: Fallback to pyYAML")
+            logger.log(logging.WARN, e)
             labels = load_raw_yaml(file_path)
     elif file_path.with_suffix(".npz").is_file():
         if not load_npz:
@@ -109,14 +111,14 @@ def load(file_path, load_npz=False):
                                     "Check if this is an error (e.g. yml file intentionally deleted).")
         file_path = file_path.with_suffix(".npz")
         labels = np.load(file_path, allow_pickle=True)["arr_0"][()]
-        print(f"WARNING: Loaded deprecated npz file! {file_path.as_posix()}")
+        logger.log(logging.WARN, f"Loaded deprecated npz file! {file_path.as_posix()}")
     else:
         raise FileNotFoundError(file_path.as_posix())
 
     try:
         labels = update(labels, labeler=file_path.parent.parent.stem)
     except KeyError as e:
-        print("Did not find expected keys in ", file_path.as_posix())
+        logger.log(logging.ERROR, "Did not find expected keys in ", file_path.as_posix())
         raise e
 
     return labels
@@ -229,7 +231,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
     target_labels = labels_list[0]
     index_unmarked = target_labels["labeler_list"].index("_unmarked")  # Labeler are already matched
     for i_labels, labels in enumerate(labels_list[1:]):
-        print(f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
+        logger.log(logging.INFO, f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
 
         initialize_target(labels, target_labels, data_shape)
 
@@ -255,7 +257,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
 
     if target_file is not None:
         save(target_file, target_labels, yml_only=yml_only)
-        print(f"Saved  {target_file.as_posix()}")
+        logger.log(logging.INFO,f"Saved  {target_file.as_posix()}")
     return target_labels
 
 
@@ -432,7 +434,7 @@ def to_array(labels,
              time_bases=None,  # Rearrange after these time bases for cams
              label_identity=None  # Treat as identical labels (nanmean if both are labeled)
              ):
-    print("DEPRECATED: Use to_numpy")
+    logger.log(logging.WARN, "DEPRECATED: Use to_numpy")
     return to_numpy(labels, extract_frame_idxs, extract_labels, time_bases, label_identity)
 
 
@@ -586,6 +588,7 @@ def read_label_yaml(file):
     re_key_numlist = re.compile(pattern)
 
     for line in file.readlines():
+        line_parts = None
         try:
             if in_line:
                 full_line += line.strip()
@@ -641,12 +644,12 @@ def read_label_yaml(file):
                     else:
                         raise Exception("We should never get here", line)
         except Exception as e:
-            print("Current key:", current_key)
-            print("Current label:", current_label)
-            print("Current frame:", current_frame)
-            print("In line:", in_line)
-            print(line)
-            print(line_parts)
+            logger.log(logging.ERROR, "Current key:", current_key)
+            logger.log(logging.ERROR, "Current label:", current_label)
+            logger.log(logging.ERROR, "Current frame:", current_frame)
+            logger.log(logging.ERROR, "In line:", in_line)
+            logger.log(logging.ERROR, line)
+            logger.log(logging.ERROR, line_parts)
             raise e
 
     return labels

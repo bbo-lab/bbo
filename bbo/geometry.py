@@ -384,7 +384,7 @@ class RigidTransform:
                               translation=np.asarray((map[np.char.add(['x', 'y', 'z'], suffix)])))
 
     def interpolate(self, times, fill_boundary="nan", interpolation_method="linear"):
-        rotation_interpolation = slerp(times, self.rotation, fill_boundary=fill_boundary, interpolation_method=interpolation_method)
+        rotation_interpolation = slerp(times=times, rots=self.rotation, fill_boundary=fill_boundary, interpolation_method=interpolation_method)
         translation_interpolation = [scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False, fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
         return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
 
