@@ -397,7 +397,11 @@ class RigidTransform:
 
 
 @staticmethod
-def slerp(times, rots, fill_boundary="nan", interpolation_method="linear"):
+def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=False):
+    if sort:
+        sorted_indices = np.argsort(times)
+        times = times[sorted_indices]
+        rots = rots[sorted_indices]
     match interpolation_method:
         case "nearest":
             ctimes = np.convolve(times, (0.5, 0.5), mode="valid")
