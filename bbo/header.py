@@ -1,4 +1,6 @@
 import hashlib
+import os
+
 from bbo import path_management
 
 
@@ -33,10 +35,19 @@ def check_dep_header(file, recursive=None):
 
     for key in dep_headers:
         dep_file = path_management.replace_by_dict(dep_headers[key]["file"])
-        dep_hash = dep_headers[key]['hash']
-        if not calculate_sha256(dep_file) == dep_hash:
-            raise DependencyError(f"Dependency {key}: {dep_file} does not have the correct sha256 hash {dep_hash}",
-                                  file)
+
+        if 'hash' in dep_headers[key]:
+            dep_hash = dep_headers[key]['hash']
+            if not calculate_sha256(dep_file) == dep_hash:
+                raise DependencyError(f"Dependency {key}: {dep_file} does not have the correct sha256 hash {dep_hash}",
+                                      file)
+
+        if 'mtime' in dep_headers[key]:
+            dep_date = dep_headers[key]['mtime']
+            ti_m = str(int(os.path.getmtime(dep_file) * 1000))   # Milliseconds should be fine, float may differ
+            if not ti_m == dep_date:
+                raise DependencyError(f"Dependency {key}: {dep_file} changed {ti_m}, expected {dep_date}.",
+                                      file)
 
         try:
             if recursive is True:
@@ -45,6 +56,7 @@ def check_dep_header(file, recursive=None):
                 check_dep_header(dep_file, recursive=recursive - 1)
         except NoDependencyHeaderError:
             pass
+
 
     return True
 
@@ -64,15 +76,21 @@ def make_header_dict(dep_dict=None, do_path_management=True):
     return header_dict
 
 
-def make_dep_header_dict(dep_dict, do_path_management=True):
+def make_dep_header_dict(dep_dict, do_path_management=True, mtime=False, hash=True):
     header = {}
     for key in dep_dict:
         if do_path_management:
             dep_file = path_management.replace_by_dict(dep_dict[key], inverse=True)
         else:
             dep_file = dep_dict[key]
-        header["dep-file_" + key] = dep_file
-        header["dep-hash_" + key] = calculate_sha256(dep_dict[key])
+
+        if hash:
+            header["dep-file_" + key] = dep_file
+            header["dep-hash_" + key] = calculate_sha256(dep_dict[key])
+
+        if mtime:
+            header["dep-file_" + key] = dep_file
+            header["dep-mtime_" + key] = str(int(os.path.getmtime(dep_file) * 1000))
 
     return header
 
