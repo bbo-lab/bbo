@@ -65,8 +65,11 @@ def smoothrot(r, kernel=[1, 2, 1]):
 
 
 @staticmethod
-def isnan_rot(r):
-    return np.isnan(r.magnitude())
+def isnan_rot(r, inverted=False):
+    result = np.isnan(r.magnitude())
+    if inverted:
+        np.logical_not(result, out=result)
+    return result
 
 
 @staticmethod
@@ -367,16 +370,16 @@ class RigidTransform:
         return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]),
                               translation=np.asarray([tr.translation for tr in list]))
 
-    def as_map(self):
+    def as_map(self, prefix="", suffix=""):
         rot = self.rotation.as_quat()
         return {
-            'x': self.translation[:, 0],
-            'y': self.translation[:, 1],
-            'z': self.translation[:, 2],
-            'rx': rot[:, 0],
-            'ry': rot[:, 1],
-            'rz': rot[:, 2],
-            'rw': rot[:, 3]}
+            f"{prefix}'x'{suffix}": self.translation[:, 0],
+            f"{prefix}'y'{suffix}": self.translation[:, 1],
+            f"{prefix}'z'{suffix}": self.translation[:, 2],
+            f"{prefix}'rx'{suffix}": rot[:, 0],
+            f"{prefix}'ry'{suffix}": rot[:, 1],
+            f"{prefix}'rz'{suffix}": rot[:, 2],
+            f"{prefix}'rw'{suffix}": rot[:, 3]}
 
     @staticmethod
     def from_map(map, suffix=""):
@@ -396,40 +399,52 @@ class RigidTransform:
         return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid])
 
 
+def get_nan_rot(size):
+    return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=(size, 3)))
+
+
 @staticmethod
 def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=False):
     if sort:
         sorted_indices = np.argsort(times)
         times = times[sorted_indices]
         rots = rots[sorted_indices]
-    match interpolation_method:
-        case "nearest":
-            ctimes = np.convolve(times, (0.5, 0.5), mode="valid")
+    if len(times) == 0:
+        def interp(etimes):
+            return get_nan_rot(len(etimes))
+    else:
+        match interpolation_method:
+            case "nearest":
+                ctimes = np.convolve(times, (0.5, 0.5), mode="valid") if len(times) != 0 else times
 
-            def find_nearest(etimes):
-                idx = np.searchsorted(ctimes, etimes, side="left")
-                return rots[idx]
+                def find_nearest(etimes):
+                    idx = np.searchsorted(ctimes, etimes, side="left")
+                    return rots[idx]
 
-            interp = find_nearest
-        case "linear":
-            mask = ~isnan_rot(rots)
-            ctimes = times[mask]
-            interp = Slerp(ctimes, rots[mask])
-        case "quadratic":
-            mask = np.logical_not(isnan_rot(rots))
-            ctimes = times[mask]
-            interp = RotationSpline(ctimes, rots[mask])
-        case _:
-            raise Exception(f"Interpolation method {interpolation_method} not known")
+                interp = find_nearest
+            case "linear":
+                mask = isnan_rot(rots, inverted=True)
+                mtimes = times[mask]
+                interp = Slerp(mtimes, rots[mask])
+            case "quadratic":
+                mask = isnan_rot(rots, inverted=True)
+                mtimes = times[mask]
+                interp = RotationSpline(mtimes, rots[mask])
+            case _:
+                raise Exception(f"Interpolation method {interpolation_method} not known")
 
-    tmin, tmax = ctimes[0], ctimes[-1]
+    tmin, tmax = (times[0], times[-1]) if len(times) != 0 else (np.inf, -np.inf)
 
     def funct(interptimes):
-        tclipped = np.clip(interptimes, a_min=tmin, a_max=tmax)
-        res = interp(tclipped)
+        interptimes = np.copy(interptimes)
+        low = interptimes < tmin
+        high = interptimes > tmax
+        interptimes[low] = tmin
+        interptimes[high] = tmax
+        res = interp(interptimes)
         match fill_boundary:
             case "nan":
-                replace_mask = tclipped != interptimes
+                replace_mask = np.logical_or(low, high)
                 res[replace_mask] = Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
             case "constant":
                 pass
