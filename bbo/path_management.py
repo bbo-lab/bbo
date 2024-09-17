@@ -4,6 +4,37 @@ import yaml
 import sys
 import re
 
+def decode_path(path, exist_required=True):
+    is_path = True if isinstance(path, Path) else False
+    path = Path(path).as_posix()
+    replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
+    print(replace_dict)
+    for key, value in replace_dict.items():
+        if not isinstance(value, list):
+            value = [value]
+        for v in value:
+            decoded_path = Path(path.replace(key, v))
+            if decoded_path.exists():
+                return decoded_path if is_path else decoded_path.as_posix()
+        if not exist_required:
+            path = path.replace(key, value[0])
+
+    return Path(path) if is_path else path
+
+
+def encode_path(path):
+    is_path = True if isinstance(path, Path) else False
+    path = Path(path).expanduser().resolve().as_posix()
+    replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
+    print(replace_dict)
+    for key, value in replace_dict.items():
+        if not isinstance(value, list):
+            value = [value]
+        for v in value:
+            path = Path(path.replace(v, key)).as_posix()
+
+    return Path(path) if is_path else path
+
 
 def get_custom_replace_dict():
     config_file = Path("~/.bbo/replace_dict.yml").expanduser().resolve()
@@ -22,7 +53,10 @@ def get_custom_replace_dict():
         custom_replace_dict = {}
     # Python does not know ~, resolve that
     for key in custom_replace_dict:
-        custom_replace_dict[key] = Path(custom_replace_dict[key]).expanduser().resolve().as_posix()
+        if isinstance(custom_replace_dict[key], list):
+            custom_replace_dict[key] = [Path(v).expanduser().resolve().as_posix() for v in custom_replace_dict[key]]
+        else:
+            custom_replace_dict[key] = Path(custom_replace_dict[key]).expanduser().resolve().as_posix()
 
     return custom_replace_dict
 
@@ -54,8 +88,15 @@ def get_default_replace_dict():
     return default_replace_dict
 
 
-def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False):
+def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False, return_list=False):
+    # Note: replace_dict should usually not be used outside this module, use encode_path and decode_path for
+    #  path manipulation
     replace_dict = get_default_replace_dict() | get_custom_replace_dict()
+
+    if not return_list:
+        for k in replace_dict:
+            if isinstance(replace_dict[k], list):
+                replace_dict[k] = replace_dict[k][0]
 
     if with_brackets:
         replace_dict = {f"{{{k}}}": v for k, v in replace_dict.items()}
@@ -70,6 +111,7 @@ def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False
 
 
 def replace_by_dict(text, replace_dict=None, inverse=False):
+    # Deprecated: use encode_path and decode_path to support multiple replacements
     is_path = False
     if isinstance(text, Path):
         text = text.as_posix()
