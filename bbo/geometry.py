@@ -373,13 +373,13 @@ class RigidTransform:
     def as_map(self, prefix="", suffix=""):
         rot = self.rotation.as_quat()
         return {
-            f"{prefix}'x'{suffix}": self.translation[:, 0],
-            f"{prefix}'y'{suffix}": self.translation[:, 1],
-            f"{prefix}'z'{suffix}": self.translation[:, 2],
-            f"{prefix}'rx'{suffix}": rot[:, 0],
-            f"{prefix}'ry'{suffix}": rot[:, 1],
-            f"{prefix}'rz'{suffix}": rot[:, 2],
-            f"{prefix}'rw'{suffix}": rot[:, 3]}
+            f"{prefix}x{suffix}": self.translation[:, 0],
+            f"{prefix}y{suffix}": self.translation[:, 1],
+            f"{prefix}z{suffix}": self.translation[:, 2],
+            f"{prefix}rx{suffix}": rot[:, 0],
+            f"{prefix}ry{suffix}": rot[:, 1],
+            f"{prefix}rz{suffix}": rot[:, 2],
+            f"{prefix}rw{suffix}": rot[:, 3]}
 
     @staticmethod
     def from_map(map, suffix=""):
