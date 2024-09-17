@@ -83,6 +83,7 @@ def acm_to_labels(acmlabels, labeler="_unknown"):
             labels['labeler'][ln][fr_idx] = np.zeros((acmlabels[fr_idx][ln].shape[0]))
     return labels
 
+
 def labels_to_acm(labels):
     acmlabels = {}
     for ln in labels:
@@ -257,7 +258,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
 
     if target_file is not None:
         save(target_file, target_labels, yml_only=yml_only)
-        logger.log(logging.INFO,f"Saved  {target_file.as_posix()}")
+        logger.log(logging.INFO, f"Saved  {target_file.as_posix()}")
     return target_labels
 
 
@@ -440,7 +441,7 @@ def to_array(labels,
 
 def to_numpy(labels,
              extract_frame_idxs=None, extract_labels=None,  # Extract only these parts of data
-             time_bases=None,  # Rearrange after these time bases for cams
+             time_bases=None,  # Rearrange after these times for cams
              label_identity=None  # Treat as identical labels (nanmean if both are labeled)
              ):
     cams_n = get_n_cams(labels)
@@ -453,6 +454,9 @@ def to_numpy(labels,
 
     if time_bases is None:
         time_bases = [extract_frame_idxs for _ in range(cams_n)]
+
+    assert np.all([len(tb) == len(extract_frame_idxs) for tb in time_bases]), (
+        "time_bases and extract_frame_idxs must match in length")
 
     time_base = np.unique(np.concatenate(time_bases, axis=0))
 

@@ -29,7 +29,9 @@ def get_custom_replace_dict():
 
 def get_default_replace_dict():
     default_replace_dict = {
-        'dropbox': Path("~/Dropbox/").expanduser().resolve().as_posix()
+        'dropbox': Path("~/Dropbox/").expanduser().resolve().as_posix(),
+        'projects_repos': Path("~/code/projects/").expanduser().resolve().as_posix(),
+        'python_packages_repos': Path("~/code/python_packages/").expanduser().resolve().as_posix(),
     }
 
     if sys.platform.startswith('linux'):

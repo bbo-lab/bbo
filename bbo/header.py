@@ -6,7 +6,7 @@ header_version = 0.1
 
 
 def check_header(file, recursive=None):
-    return check_header(file, recursive)
+    return check_dep_header(file, recursive)
 
 
 def check_dep_header(file, recursive=None):
