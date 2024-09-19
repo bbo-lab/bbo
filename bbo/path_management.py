@@ -4,11 +4,13 @@ import yaml
 import sys
 import re
 
-def decode_path(path, exist_required=True):
+def decode_path(path, exist_required=True, replace_dict=None):
+    if replace_dict is None:
+        replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
+
     is_path = True if isinstance(path, Path) else False
     path = Path(path).as_posix()
-    replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
-    print(replace_dict)
+
     for key, value in replace_dict.items():
         if not isinstance(value, list):
             value = [value]
@@ -22,11 +24,13 @@ def decode_path(path, exist_required=True):
     return Path(path) if is_path else path
 
 
-def encode_path(path):
+def encode_path(path, replace_dict=None):
+    if replace_dict is None:
+        replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
+
     is_path = True if isinstance(path, Path) else False
     path = Path(path).expanduser().resolve().as_posix()
-    replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
-    print(replace_dict)
+
     for key, value in replace_dict.items():
         if not isinstance(value, list):
             value = [value]
