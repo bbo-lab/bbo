@@ -11,7 +11,7 @@ uuid = "f1f5ba7b_baf1_4f83_b940_a5f9e8468c45"
 
 def load(yml_path, replace_dict=None, replace_dict_set_file=False, include=True, dependencies=None, ignore_missing=False):
     if replace_dict is None:
-        replace_dict = get_replace_dict(with_brackets=True, no_trailing_slash=True, return_list=True)
+        replace_dict = get_replace_dict(no_trailing_slash=True, return_list=True)
 
     if isinstance(yml_path, str):
         yml_path = Path(yml_path)
