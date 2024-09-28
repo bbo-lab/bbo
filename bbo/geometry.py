@@ -436,7 +436,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
     tmin, tmax = (times[0], times[-1]) if len(times) != 0 else (np.inf, -np.inf)
 
     if not ignore_nans:
-        nan_mask = np.isnan(rots.as_quat()).any(axis=-1)
+        nan_mask = np.append(np.isnan(rots.as_quat()).any(axis=-1), True)
 
     def funct(interptimes):
         interptimes = np.copy(interptimes)
@@ -455,7 +455,6 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
                 raise Exception(f"Boundary {fill_boundary} not known")
 
         if not ignore_nans:
-            print(np.min(times), np.max(times), np.min(np.diff(times)), np.max(np.diff(times)))
             indices = np.digitize(interptimes, times)
 
             for i_t, i in enumerate(indices):

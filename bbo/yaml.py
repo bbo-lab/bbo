@@ -37,8 +37,8 @@ def load(yml_path, replace_dict=None, replace_dict_set_file=False, include=True,
     # TODO: It might be worth checking https://stackoverflow.com/questions/528281/how-can-i-include-a-yaml-file-inside-another
     replace_include(yaml_dict, yml_path.parent, replace_dict, include, dependencies, ignore_missing)
 
-    if "{file}" not in replace_dict or replace_dict_set_file:
-        replace_dict["{file}"] = yml_path.parent.as_posix()
+    if "file" not in replace_dict or replace_dict_set_file:
+        replace_dict["file"] = yml_path.parent.as_posix()
     yaml_dict = replace_placeholders(yaml_dict, replace_dict)
 
     return yaml_dict
