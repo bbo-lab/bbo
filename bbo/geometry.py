@@ -433,10 +433,11 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
             case _:
                 raise Exception(f"Interpolation method {interpolation_method} not known")
 
-    tmin, tmax = (times[0], times[-1]) if len(times) != 0 else (np.inf, -np.inf)
-
     if not ignore_nans:
         nan_mask = np.append(np.isnan(rots.as_quat()).any(axis=-1), True)
+        tmin, tmax = (times[~nan_mask[:-1]][0], times[~nan_mask[:-1]][-1]) if len(times) != 0 else (np.inf, -np.inf)
+    else:
+        tmin, tmax = (times[0], times[-1]) if len(times) != 0 else (np.inf, -np.inf)
 
     def funct(interptimes):
         interptimes = np.copy(interptimes)
