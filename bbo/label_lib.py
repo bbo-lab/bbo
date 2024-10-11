@@ -442,7 +442,9 @@ def to_array(labels,
 def to_numpy(labels,
              extract_frame_idxs=None, extract_labels=None,  # Extract only these parts of data
              time_bases=None,  # Rearrange after these times for cams
-             label_identity=None  # Treat as identical labels (nanmean if both are labeled)
+             time_bases_complete=False,  # Supplied time bases are the full time bases of the video
+             strip_nans=False,  # Remove all times that are fully nan
+             label_identity=None,  # Treat as identical labels (nanmean if both are labeled)
              ):
     cams_n = get_n_cams(labels)
 
@@ -454,6 +456,9 @@ def to_numpy(labels,
 
     if time_bases is None:
         time_bases = [extract_frame_idxs for _ in range(cams_n)]
+
+    if time_bases_complete:
+        time_bases = [tb[extract_frame_idxs] for tb in time_bases]
 
     assert np.all([len(tb) == len(extract_frame_idxs) for tb in time_bases]), (
         "time_bases and extract_frame_idxs must match in length")
@@ -483,6 +488,12 @@ def to_numpy(labels,
                                 np.nanmean(np.array(
                                     [cam_coords, landmark_imcoords[i_cam, time_base_idx, lm_idx]]
                                 ), axis=0))
+
+    if strip_nans:
+        mask = ~np.all(np.isnan(landmark_imcoords), axis=(0,2,3))
+        landmark_imcoords = landmark_imcoords[:,mask]
+        time_base = time_base[mask]
+
     return landmark_imcoords, time_base
 
 
