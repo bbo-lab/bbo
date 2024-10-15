@@ -404,17 +404,21 @@ def get_nan_rot(size):
 
 
 @staticmethod
-def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=True, ignore_nans=False):
+def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=True, ignore_nans=True):
+    assert not np.any(np.isnan(times))
     if sort:
         sorted_indices = np.argsort(times)
         times = times[sorted_indices]
         rots = rots[sorted_indices]
+    assert np.all(times[:-1] <= times[1:]), f'times must be sorted {np.nonzero(~(times[:-1] <= times[1:]))}'
+
     if len(times) == 0:
         def interp(etimes):
             return get_nan_rot(len(etimes))
     else:
         match interpolation_method:
             case "nearest":
+                mtimes = times
                 ctimes = np.convolve(times, (0.5, 0.5), mode="valid") if len(times) != 0 else times
 
                 def find_nearest(etimes):
@@ -433,11 +437,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
             case _:
                 raise Exception(f"Interpolation method {interpolation_method} not known")
 
-    if not ignore_nans:
-        nan_mask = np.append(np.isnan(rots.as_quat()).any(axis=-1), True)
-        tmin, tmax = (times[~nan_mask[:-1]][0], times[~nan_mask[:-1]][-1]) if len(times) != 0 else (np.inf, -np.inf)
-    else:
-        tmin, tmax = (times[0], times[-1]) if len(times) != 0 else (np.inf, -np.inf)
+    tmin, tmax = (mtimes[0], mtimes[-1]) if len(mtimes) != 0 else (np.inf, -np.inf)
 
     def funct(interptimes):
         interptimes = np.copy(interptimes)
@@ -456,6 +456,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
                 raise Exception(f"Boundary {fill_boundary} not known")
 
         if not ignore_nans:
+            nan_mask = isnan_rot(rots)
             indices = np.digitize(interptimes, times)
 
             for i_t, i in enumerate(indices):
