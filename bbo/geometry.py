@@ -388,7 +388,19 @@ class RigidTransform:
 
     def interpolate(self, times, fill_boundary="nan", interpolation_method="linear"):
         rotation_interpolation = slerp(times=times, rots=self.rotation, fill_boundary=fill_boundary, interpolation_method=interpolation_method)
-        translation_interpolation = [scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False, fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
+
+        # TODO: interp1d is legacy API. This should be reimplemented, np.interp would be an option
+        if fill_boundary == "constant":
+            fill_value = self.get_translation()[(0, -1),]
+            translation_interpolation = [
+                scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False,
+                                           fill_value=(fill_value[0,i], fill_value[1,i])) for i, traj in enumerate(np.moveaxis(self.translation, -1, 0))]
+        else:
+            translation_interpolation = [
+                scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False,
+                                           fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
+
+
         return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
 
     def mean(self):
