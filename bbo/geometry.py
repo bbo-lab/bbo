@@ -411,12 +411,15 @@ class RigidTransform:
         return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid])
 
 
-def get_nan_rot(size):
-    return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=(size, 3)))
+def get_nan_rot(size=None):
+    if size == 0:
+        return Rotation.identity(0)
+    array = np.full(fill_value=np.nan, shape=(size, 3)) if size is None else np.full(fill_value=np.nan, shape=(size, 3))
+    return Rotation.from_rotvec(array)
 
 
 @staticmethod
-def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=True, ignore_nans=True):
+def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=True):
     assert not np.any(np.isnan(times))
     if sort:
         sorted_indices = np.argsort(times)
@@ -450,6 +453,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
                 raise Exception(f"Interpolation method {interpolation_method} not known")
 
     tmin, tmax = (mtimes[0], mtimes[-1]) if len(mtimes) != 0 else (np.inf, -np.inf)
+    nan_mask = np.append(isnan_rot(rots), False)
 
     def funct(interptimes):
         interptimes = np.copy(interptimes)
@@ -466,17 +470,11 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
                 pass
             case _:
                 raise Exception(f"Boundary {fill_boundary} not known")
-
-        if not ignore_nans:
-            nan_mask = isnan_rot(rots)
+        if interpolation_method != "nearest":
             indices = np.digitize(interptimes, times)
-
-            for i_t, i in enumerate(indices):
-                if nan_mask[i] or nan_mask[i+1]:
-                    res[i_t] = Rotation.from_rotvec(np.array([np.nan, np.nan, np.nan]))
-
+            indices = np.logical_or(nan_mask[indices], nan_mask[indices+1])
+            res[indices] = get_nan_rot(np.count_nonzero(indices))
         return res
-
     return funct
 
 class Line:
