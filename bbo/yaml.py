@@ -9,7 +9,7 @@ from bbo.path_management import get_replace_dict, encode_path, decode_path
 uuid = "f1f5ba7b_baf1_4f83_b940_a5f9e8468c45"
 
 
-def load(yml_path, replace_dict=None, replace_dict_set_file=False, include=True, dependencies=None, ignore_missing=False):
+def load(yml_path, replace_dict=None, replace_dict_set_file=False, include=True, dependencies=None, ignore_missing=False, exist_required=True):
     if replace_dict is None:
         replace_dict = get_replace_dict(no_trailing_slash=True, return_list=True)
 
@@ -39,7 +39,7 @@ def load(yml_path, replace_dict=None, replace_dict_set_file=False, include=True,
 
     if "file" not in replace_dict or replace_dict_set_file:
         replace_dict["file"] = yml_path.parent.as_posix()
-    yaml_dict = replace_placeholders(yaml_dict, replace_dict)
+    yaml_dict = replace_placeholders(yaml_dict, replace_dict, exist_required=exist_required)
 
     return yaml_dict
 
@@ -83,16 +83,16 @@ def merge_dicts(target_dict, merge_dict):
             target_dict[key] = merge_dict[key]
 
 
-def replace_placeholders(entry, replace_dict:dict|None=None):
+def replace_placeholders(entry, replace_dict:dict|None=None, exist_required=False):
     if replace_dict == None or len(replace_dict) == 0:
         return entry
 
     if isinstance(entry, str):
-        entry = decode_path(entry, replace_dict=replace_dict)
+        entry = decode_path(entry, replace_dict=replace_dict, exist_required=exist_required)
     elif isinstance(entry, dict):
         for key in entry:
-            entry[key] = replace_placeholders(entry[key], replace_dict)
+            entry[key] = replace_placeholders(entry[key], replace_dict, exist_required=exist_required)
     elif isinstance(entry, list):
         for i in range(len(entry)):
-            entry[i] = replace_placeholders(entry[i], replace_dict)
+            entry[i] = replace_placeholders(entry[i], replace_dict, exist_required=exist_required)
     return entry

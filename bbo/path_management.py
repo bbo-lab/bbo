@@ -11,7 +11,7 @@ def decode_path(path, exist_required=True, replace_dict=None):
 
     is_path = True if isinstance(path, Path) else False
     path = Path(path).as_posix()
-    
+
     for key, value in replace_dict.items():
         if not isinstance(value, list):
             value = [value]
@@ -21,7 +21,6 @@ def decode_path(path, exist_required=True, replace_dict=None):
                 return decoded_path if is_path else decoded_path.as_posix()
         if not exist_required:
             path = path.replace(key, value[0])
-
     return Path(path) if is_path else path
 
 

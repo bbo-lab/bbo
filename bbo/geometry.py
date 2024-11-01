@@ -147,7 +147,8 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     """
     Converts cartesian to equidistant coordinates
     """
-    vec = np.asarray(vec).T[([cart.index(a) for a in "xyz"],)]
+    vec = np.moveaxis(np.asarray(vec),-1,0)
+    vec = vec[([cart.index(a) for a in "xyz"],)]
     for a in invertaxis:
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
@@ -160,14 +161,14 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     if degrees:
         res[1] = np.rad2deg(res[1])
         res[2] = np.rad2deg(res[2])
-    return np.asarray([res["rxy".index(a)] for a in equidist]).T
+    return np.stack([res["rxy".index(a)] for a in equidist], axis=-1)
 
 
 def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
     """
     Converts equidistant to cartesian coordinates
     """
-    vec = np.asarray(vec).T
+    vec = np.moveaxis(np.asarray(vec), -1,0)
     indices = [equidist.find(a) for a in "rxy"]
     radius = vec[indices[0]] if indices[0] > -1 else 1
     xequidist, yequidist = vec[indices[1]], vec[indices[2]]
@@ -180,7 +181,7 @@ def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False)
     for a in invertaxis:
         idx = "xyz".index(a)
         res[idx] = -res[idx]
-    return np.asarray([res["xyz".index(a)] for a in cart]).T
+    return np.stack([res["xyz".index(a)] for a in cart], axis=-1)
 
 
 def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
@@ -197,7 +198,7 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     sph
     degrees
     """
-    vec = np.asarray(vec).T
+    vec = np.moveaxis(np.asarray(vec), -1,0)
     indices = [sph.find(a) for a in "ria"]
     radius = vec[indices[0]] if indices[0] > -1 else 1
     inclination, azimuth = vec[indices[1]], vec[indices[2]]
@@ -211,7 +212,7 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     for a in invertaxis:
         idx = "xyz".index(a)
         res[idx] = -res[idx]
-    return np.asarray([res["xyz".index(a)] for a in cart]).T
+    return np.stack([res["xyz".index(a)] for a in cart], axis=-1)
 
 
 def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
@@ -231,7 +232,8 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     Returns
 
     """
-    vec = np.asarray(vec).T[([cart.index(a) for a in "xyz"],)]
+    vec = np.moveaxis(np.asarray(vec), -1, 0)
+    vec = vec[([cart.index(a) for a in "xyz"],)]
     for a in invertaxis:
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
@@ -245,7 +247,7 @@ def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
         azimuth = np.rad2deg(azimuth)
         inclination = np.rad2deg(inclination)
     res = [np.sqrt(sum + np.square(z)), inclination, azimuth]
-    return np.asarray([res["ria".index(a)] for a in sph]).T
+    return np.stack([res["ria".index(a)] for a in sph], axis=-1)
 
 
 class RigidTransform:

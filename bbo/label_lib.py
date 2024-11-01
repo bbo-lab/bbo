@@ -240,8 +240,11 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
             for fr_idx in labels["labels"][ln]:
                 source_cam_mask = labels["labeler"][ln][fr_idx] != index_unmarked
                 # We do <= to be able to do in place corrections in the merged files
-                source_newer_mask = target_labels["point_times"][ln][fr_idx] <= labels["point_times"][ln][fr_idx]
-
+                try:
+                    source_newer_mask = target_labels["point_times"][ln][fr_idx] <= labels["point_times"][ln][fr_idx]
+                except Exception as e:
+                    print(target_labels["point_times"][ln][fr_idx], labels["point_times"][ln][fr_idx])
+                    raise e
                 replace_mask = source_cam_mask & source_newer_mask
                 if not overwrite:
                     target_cam_mask = target_labels["labeler"][ln][fr_idx] != index_unmarked
