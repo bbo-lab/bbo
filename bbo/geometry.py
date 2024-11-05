@@ -73,6 +73,10 @@ def isnan_rot(r, inverted=False):
 
 
 @staticmethod
+def nanmean_rot(r):
+    return r[isnan_rot(r, inverted=True)].mean()
+
+@staticmethod
 def inverse_rot(r):
     mask = np.logical_not(isnan_rot(r))
     if isinstance(mask, np.ndarray):
