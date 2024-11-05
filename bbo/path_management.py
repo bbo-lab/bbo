@@ -17,7 +17,7 @@ def decode_path(path, exist_required=True, replace_dict=None):
             value = [value]
         for v in value:
             decoded_path = Path(path.replace(key, v))
-            if decoded_path.exists():
+            if decoded_path.resolve().exists():  # resolve() necessary because .../[nonexisting folder]/../... is False
                 return decoded_path if is_path else decoded_path.as_posix()
         if not exist_required:
             path = path.replace(key, value[0])
@@ -86,7 +86,10 @@ def get_default_replace_dict():
                 if e.errno == 116:  # Stale file handle, sometimes happens with SOMA
                     default_replace_dict["storage"] = path
     elif sys.platform.startswith('win') or sys.platform.startswith('cygwin'):
-        default_replace_dict["storage"] = "s:/"
+        if not Path("s:/").exists() and Path("o:/").exists():
+            default_replace_dict["storage"] = "o:/"
+        else:
+            default_replace_dict["storage"] = "s:/"
     else:
         print("Warning unknown platform", sys.platform, file=sys.stderr)
 
