@@ -34,7 +34,7 @@ def check_dep_header(file, recursive=None):
                 dep_headers[key][key_type] = value.strip()
 
     for key in dep_headers:
-        dep_file = path_management.replace_by_dict(dep_headers[key]["file"])
+        dep_file = path_management.decode_path(dep_headers[key]["file"])
 
         if 'hash' in dep_headers[key]:
             dep_hash = dep_headers[key]['hash']
@@ -80,7 +80,7 @@ def make_dep_header_dict(dep_dict, do_path_management=True, mtime=False, hash=Tr
     header = {}
     for key in dep_dict:
         if do_path_management:
-            dep_file = path_management.replace_by_dict(dep_dict[key], inverse=True)
+            dep_file = path_management.encode_path(dep_dict[key])
         else:
             dep_file = dep_dict[key]
 
