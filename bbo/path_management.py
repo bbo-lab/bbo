@@ -4,7 +4,7 @@ import yaml
 import sys
 import re
 
-def decode_path(path, exist_required=True, replace_dict=None):
+def decode_path(path, exist_required=True, replace_dict=None, debug=False):
     if replace_dict is None:
         replace_dict = get_replace_dict(with_brackets=False, no_trailing_slash=True, return_list=True)
     replace_dict = {f"{{{k}}}": v for k, v in replace_dict.items()}
@@ -13,12 +13,18 @@ def decode_path(path, exist_required=True, replace_dict=None):
     path = Path(path).as_posix()
 
     for key, value in replace_dict.items():
+        if debug:
+            print(f"====== {key} ======")
         if not isinstance(value, list):
             value = [value]
         for v in value:
             decoded_path = Path(path.replace(key, v))
             if decoded_path.resolve().exists():  # resolve() necessary because .../[nonexisting folder]/../... is False
+                if debug:
+                    print(f"Success: {decoded_path.resolve().as_posix()} found.")
                 return decoded_path if is_path else decoded_path.as_posix()
+            elif debug:
+                print(f"{decoded_path.resolve().as_posix()} does not exist.")
         if not exist_required:
             path = path.replace(key, value[0])
     return Path(path) if is_path else path
