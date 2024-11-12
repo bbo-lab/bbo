@@ -456,6 +456,8 @@ def to_numpy(labels,
 
     if extract_labels is None:
         extract_labels = get_labels(labels)
+    if isinstance(extract_labels, str):
+        extract_labels = (extract_labels,)
 
     if time_bases is None:
         time_bases = [extract_frame_idxs for _ in range(cams_n)]
