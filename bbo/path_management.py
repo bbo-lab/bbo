@@ -19,12 +19,12 @@ def decode_path(path, exist_required=True, replace_dict=None, debug=False):
             value = [value]
         for v in value:
             decoded_path = Path(path.replace(key, v))
-            if decoded_path.resolve().exists():  # resolve() necessary because .../[nonexisting folder]/../... is False
+            if decoded_path.expanduser().resolve().exists():  # resolve() necessary because .../[nonexisting folder]/../... is False
                 if debug:
-                    print(f"Success: {decoded_path.resolve().as_posix()} found.")
+                    print(f"Success: {decoded_path.expanduser().resolve().as_posix()} found.")
                 return decoded_path if is_path else decoded_path.as_posix()
             elif debug:
-                print(f"{decoded_path.resolve().as_posix()} does not exist.")
+                print(f"{decoded_path.expanduser().resolve().as_posix()} does not exist.")
         if not exist_required:
             path = path.replace(key, value[0])
     return Path(path) if is_path else path
