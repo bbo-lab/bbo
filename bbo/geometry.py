@@ -2,6 +2,7 @@ import numpy as np
 import scipy.spatial.transform
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
+from scipy.spatial.transform import RotationSpline
 
 def get_mirror_matrix(normal):
     normal = np.asarray(normal)
@@ -55,7 +56,6 @@ def from_rotvec_rot(rotvecs):
     return res
 
 
-@staticmethod
 def smoothrot(r, kernel=[1, 2, 1]):
     kernel_len = len(kernel)
     res = Rotation.identity(len(r))
@@ -64,19 +64,36 @@ def smoothrot(r, kernel=[1, 2, 1]):
     return res
 
 
-@staticmethod
 def isnan_rot(r, inverted=False):
     result = np.isnan(r.magnitude())
     if inverted:
         np.logical_not(result, out=result)
     return result
 
+def rot_insert(arr, obj, values):
+    if isinstance(arr, Rotation):
+        result = get_nan_rot(len(arr) + len(obj))
+    else:
+        #Only for pytest
+        result = np.empty(shape=(len(arr) + len(obj)))
+    mask = np.ones(shape=len(arr), dtype=bool)
+    mask = np.insert(mask, obj, False)
+    result[mask] = arr
+    result[~mask] = values
+    return result
 
-@staticmethod
+
 def nanmean_rot(r):
     return r[isnan_rot(r, inverted=True)].mean()
 
-@staticmethod
+def from_euler_rot(seq, angles, degrees=False):
+    res = get_nan_rot(len(angles))
+    mask = ~np.isnan(angles)
+    if len(mask.shape) == 2:
+        mask = np.all(mask, axis=-1)
+    res[mask] = Rotation.from_euler(seq, angles[mask], degrees=degrees)
+    return res
+
 def inverse_rot(r):
     mask = np.logical_not(isnan_rot(r))
     if isinstance(mask, np.ndarray):
@@ -90,7 +107,6 @@ def inverse_rot(r):
     raise Exception(f'Input type not supported {type(r)}')
 
 
-@staticmethod
 def rotation_gradient(rot):
     inv_rot = inverse_rot(rot)
     res = multiply_rot(rot[:-2], inv_rot[2:])
@@ -100,7 +116,6 @@ def rotation_gradient(rot):
     return Rotation.from_rotvec(res)
 
 
-@staticmethod
 def mean_rot(r, weights=None, ignore_nan=True):
     mask = np.logical_not(isnan_rot(r))
     if np.any(mask) if ignore_nan else np.all(mask):
@@ -108,7 +123,6 @@ def mean_rot(r, weights=None, ignore_nan=True):
     return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
 
 
-@staticmethod
 def multiply_rot(lhs, rhs):
     lmask, rmask = isnan_rot(lhs), isnan_rot(rhs)
     mask = ~np.logical_or(lmask, rmask)
@@ -129,7 +143,6 @@ def multiply_rot(lhs, rhs):
     raise Exception(f'Input type not supported {type(lhs)} {type(rhs)}')
 
 
-@staticmethod
 def apply_rot(r, vec):
     mask = ~isnan_rot(r)
     if isinstance(mask, np.ndarray):
@@ -219,7 +232,7 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     return np.stack([res["xyz".index(a)] for a in cart], axis=-1)
 
 
-def cart2spherical(vec, cart="xyz", sph="ria", invertaxis="", center_inclination=False, degrees=False):
+def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis="", center_inclination=False, degrees=False):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -420,6 +433,8 @@ class RigidTransform:
 def get_nan_rot(size=None):
     if size == 0:
         return Rotation.identity(0)
+    if size is None:
+        return Rotation.from_rotvec(np.full(shape=3, fill_value=np.nan))
     array = np.full(fill_value=np.nan, shape=(size, 3)) if size is None else np.full(fill_value=np.nan, shape=(size, 3))
     return Rotation.from_rotvec(array)
 
@@ -434,8 +449,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
     assert np.all(times[:-1] <= times[1:]), f'times must be sorted {np.nonzero(~(times[:-1] <= times[1:]))}'
 
     if len(times) == 0:
-        def interp(etimes):
-            return get_nan_rot(len(etimes))
+        return lambda etimes: get_nan_rot(len(etimes))
     else:
         match interpolation_method:
             case "nearest":

@@ -7,6 +7,14 @@ from scipy.spatial.transform import Rotation as R
 import bbo.geometry as geometry
 
 
+class TestRotations(unittest.TestCase):
+    def test_rotation_insert(self):
+        data = np.arange(4)
+        insertion_indices = np.arange(5)
+        insertion_data = -np.arange(5)
+        np.testing.assert_equal(np.insert(data, insertion_indices, insertion_data),
+                                geometry.rot_insert(data, insertion_indices, insertion_data))
+
 class TestSimpleFunctions(unittest.TestCase):
     @staticmethod
     def run_on_vectors(v0, v1):
