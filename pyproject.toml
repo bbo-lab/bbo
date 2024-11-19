@@ -31,7 +31,12 @@ path = "bbo/__init__.py"
 [tool.hatch.build.targets.sdist]
 include = [
     "/bbo",
+    "README.md",
+    "LICENSE",
 ]
 
 [tool.hatch.build.targets.wheel]
       packages = ["bbo"]
+
+[tool.hatch.metadata]
+license-files = ["LICENSE"]

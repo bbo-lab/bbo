@@ -5,14 +5,19 @@ import sys
 import re
 
 def decode_path(path, exist_required=True, replace_dict=None, debug=False):
+    is_path = True if isinstance(path, Path) else False
+    path = Path(path).as_posix()
+
+    if not "{" in path or not "}" in path:
+        return Path(path) if is_path else path
+
     if replace_dict is None:
         replace_dict = get_replace_dict(with_brackets=False, no_trailing_slash=True, return_list=True)
     replace_dict = {f"{{{k}}}": v for k, v in replace_dict.items()}
 
-    is_path = True if isinstance(path, Path) else False
-    path = Path(path).as_posix()
-
     for key, value in replace_dict.items():
+        if not key in path:
+            continue
         if debug:
             print(f"====== {key} ======")
         if not isinstance(value, list):
@@ -21,12 +26,13 @@ def decode_path(path, exist_required=True, replace_dict=None, debug=False):
             decoded_path = Path(path.replace(key, v))
             if decoded_path.expanduser().resolve().exists():  # resolve() necessary because .../[nonexisting folder]/../... is False
                 if debug:
-                    print(f"Success: {decoded_path.expanduser().resolve().as_posix()} found.")
+                    print(f"Success: {value} - {decoded_path.expanduser().resolve().as_posix()} found.")
                 return decoded_path if is_path else decoded_path.as_posix()
             elif debug:
-                print(f"{decoded_path.expanduser().resolve().as_posix()} does not exist.")
+                print(f"{value} - {decoded_path.expanduser().resolve().as_posix()} does not exist.")
         if not exist_required:
             path = path.replace(key, value[0])
+
     return Path(path) if is_path else path
 
 
