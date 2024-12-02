@@ -456,7 +456,9 @@ def to_numpy(labels,
 
     if extract_labels is None:
         extract_labels = get_labels(labels)
-    if isinstance(extract_labels, str):
+
+    scalar_label = isinstance(extract_labels, str)
+    if scalar_label:
         extract_labels = (extract_labels,)
 
     if time_bases is None:
@@ -498,6 +500,9 @@ def to_numpy(labels,
         mask = ~np.all(np.isnan(landmark_imcoords), axis=(0,2,3))
         landmark_imcoords = landmark_imcoords[:,mask]
         time_base = time_base[mask]
+
+    if scalar_label:
+        landmark_imcoords = landmark_imcoords[..., 0, :]
 
     return landmark_imcoords, time_base
 
