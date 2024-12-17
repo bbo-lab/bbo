@@ -16,7 +16,7 @@ def ndarray_representer(dumper: yaml.Dumper, array: np.ndarray) -> yaml.Node:
 
 yaml.add_representer(np.ndarray, ndarray_representer)
 
-version = 0.4
+version = 0.4  # TODO: This should be a string, must be addressed before 0.10 ...
 
 
 def update(labels, labeler="_unknown"):
@@ -45,7 +45,7 @@ def update(labels, labeler="_unknown"):
 
     assert labels["version"] <= version, "Please update ACM traingui"
 
-    if labels["version"] <= 0.3:
+    if labels["version"] < 0.4:
         labeler = {}
         point_times = {}
         for ln in labels["labels"]:
@@ -92,7 +92,13 @@ def labels_to_acm(labels):
     return acmlabels
 
 
-def load(file_path, load_npz=False):
+def load(file_path, load_npz=False, v1_format=None):
+    if v1_format is None:
+        v1_format = True
+        logger.warning("DEPRECATED FORMAT: For new implementations, use v1_format=False. "
+                       "Behavior will be changed after publication of bird paper. Use v1_format=True to "
+                       "suppress this message.")
+
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
@@ -122,7 +128,44 @@ def load(file_path, load_npz=False):
         logger.log(logging.ERROR, "Did not find expected keys in ", file_path.as_posix())
         raise e
 
+    if not v1_format:
+        labels = convert_v1_to_v2(labels)
+
     return labels
+
+
+def convert_v1_to_v2(labels):
+    labels_new = {
+        'labels': {},
+        'labeler_list': labels['labeler_list'],
+    }
+    for ln in labels['labels']:
+        labels_new['labels'][ln] = {}
+        for fr_idx in labels['labels'][ln]:
+            labels_new['labels'][ln][fr_idx] = {
+                'coords': labels['labels'][ln][fr_idx],
+                'labeler': labels['labeler'][ln][fr_idx],
+                'point_times': labels['point_times'][ln][fr_idx],
+            }
+    return labels_new
+
+
+def convert_v2_to_v1(labels):
+    labels_old = {
+        'labels': {},
+        'labeler': {},
+        'point_times': {},
+        'labeler_list': labels['labeler_list'],
+    }
+    for ln in labels['labels']:
+        labels_old['labels'][ln] = {}
+        labels_old['labeler'][ln] = {}
+        labels_old['point_times'][ln] = {}
+        for fr_idx in labels['labels'][ln]:
+            labels_old['labels'][ln][fr_idx] = labels['labels'][ln][fr_idx]["coords"]
+            labels_old['labeler'][ln][fr_idx] = labels['labels'][ln][fr_idx]["labeler"]
+            labels_old['point_times'][ln][fr_idx] = labels['labels'][ln][fr_idx]["point_times"]
+    return labels_old
 
 
 def load_raw_yaml(file_path: Path):
@@ -145,6 +188,9 @@ def load_raw_yaml(file_path: Path):
 
 
 def save(file_path, labels, yml_only=False):
+    if "labeler" not in labels:
+        labels = convert_v2_to_v1(labels)
+
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
