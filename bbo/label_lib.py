@@ -214,8 +214,8 @@ def convert_v1_to_v2(labels):
             }
         try:
             for fr_idx in labels['labels'][ln]:
-                labels_new['labels'][ln][fr_idx]['labeler'] = labels['labeler'][ln][fr_idx],
-                labels_new['labels'][ln][fr_idx]['point_times'] = labels['point_times'][ln][fr_idx],
+                labels_new['labels'][ln][fr_idx]['labeler'] = labels['labeler'][ln][fr_idx]
+                labels_new['labels'][ln][fr_idx]['point_times'] = labels['point_times'][ln][fr_idx]
         except:
             logger.log(logging.WARN, "Additional info was not found in file")
     return update(labels_new)
@@ -468,8 +468,6 @@ def sort_dictionaries(target_labels):
 def make_global_lists(labels_list):
     # This changes labels_list in place!!!
     # Create a new global list of all labelers
-
-    labels_list
 
     # Lists in first entry should be preserved to minimize changes in target file for git tracking
     labeler_list_all = labels_list[0]["labeler_list"].copy()
