@@ -145,6 +145,7 @@ def labels_to_acm(labels):
 
 
 def load(file_path, load_npz=False, v0_format=None):
+    print(file_path)
     logger.log(logging.INFO, f"Loading {file_path}")
     if v0_format is None:
         v0_format = True
@@ -192,20 +193,31 @@ def convert_v1_to_v2(labels):
     if Version(labels["version"]) >= Version("1.0"):
         return labels
 
+    if "_unknown" not in labels['labeler_list']:
+        labels['labeler_list'].insert(0, "_unknown")
+
     labels_new = {
         'labels': {},
         'labeler_list': labels['labeler_list'],
         'action_list': labels['action_list'],
         'version': "1.0",
     }
+    print("LL",labels['labeler_list'])
+    idx_unknown = labels['labeler_list'].index("_unknown")
     for ln in labels['labels']:
         labels_new['labels'][ln] = {}
         for fr_idx in labels['labels'][ln]:
             labels_new['labels'][ln][fr_idx] = {
                 'coords': labels['labels'][ln][fr_idx],
-                'labeler': labels['labeler'][ln][fr_idx],
-                'point_times': labels['point_times'][ln][fr_idx],
+                'labeler': np.full(labels['labels'][ln][fr_idx].shape[0], idx_unknown, dtype=np.uint16),
+                'point_times': np.zeros(labels['labels'][ln][fr_idx].shape[0], dtype=float),
             }
+        try:
+            for fr_idx in labels['labels'][ln]:
+                labels_new['labels'][ln][fr_idx]['labeler'] = labels['labeler'][ln][fr_idx],
+                labels_new['labels'][ln][fr_idx]['point_times'] = labels['point_times'][ln][fr_idx],
+        except:
+            logger.log(logging.WARN, "Additional info was not found in file")
     return update(labels_new)
 
 
