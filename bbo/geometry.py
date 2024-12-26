@@ -267,6 +267,14 @@ def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis="", center_inc
     return np.stack([res["ria".index(a)] for a in sph], axis=-1)
 
 
+def flip_quaternions(rot):
+    flips = (np.sum(rot[:-1] * rot[1:], axis=-1) < 0).astype(int)
+    flips = np.cumsum(flips) % 2
+    flips = np.insert(flips, 0, 0)
+    flips = np.round(flips * 2 - 1)
+    return rot * flips[:, np.newaxis]
+
+
 class RigidTransform:
     def __init__(self, rotation: Rotation = Rotation.identity(), translation=None, rotation_type=None):
         if translation is None:
@@ -389,8 +397,10 @@ class RigidTransform:
         return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]),
                               translation=np.asarray([tr.translation for tr in list]))
 
-    def as_map(self, prefix="", suffix=""):
+    def as_map(self, prefix="", suffix="", flip_quats=False):
         rot = self.rotation.as_quat()
+        if flip_quats:
+            rot = flip_quaternions(rot)
         return {
             f"{prefix}x{suffix}": self.translation[:, 0],
             f"{prefix}y{suffix}": self.translation[:, 1],
@@ -567,6 +577,8 @@ def intersect(bases, vecs):
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
         if lines is not None:
+            assert position is None
+            assert direction is None
             position = [l.position for l in lines]
             direction = [l.direction for l in lines]
         self.position = np.asarray(position, dtype=dtype)
@@ -574,6 +586,7 @@ class Line:
         if not np.array_equal(self.position.shape, self.direction.shape):
             raise Exception("Shapes have to be equal")
         self.shape = self.position.shape
+        self.dtype = dtype
 
     def transform_internal_array(self, functional):
         self.position = functional(self.position)

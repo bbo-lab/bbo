@@ -185,5 +185,19 @@ class TestGeometryObjects(unittest.TestCase):
             testing.assert_allclose(tr0.apply(tr0.inv().apply(testvec)), testvec)
 
 
+class TestSimpleFunctions(unittest.TestCase):
+    def test_flip_quaternions(self):
+        num_elements = 100
+        atol = 10/num_elements
+        r = R.from_euler("x", np.linspace(np.pi, 4 * np.pi, num_elements))
+        q = r.as_quat(canonical=True)
+        assert np.max(np.linalg.norm(np.diff(q, axis=0), axis=1))> atol
+        q_flipped = geometry.flip_quaternions(q)
+        np.set_printoptions(precision=2, suppress=True)
+        np.testing.assert_allclose(np.diff(q_flipped, axis=0), 0, atol=atol)
+        np.testing.assert_allclose((r * R.from_quat(q_flipped).inv()).as_quat(canonical=True),
+                                          np.repeat(np.asarray([[0, 0, 0, 1]], dtype=float), num_elements, axis=0), atol=1e-6)
+
+
 if __name__ == '__main__':
     unittest.main()
