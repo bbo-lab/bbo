@@ -50,8 +50,6 @@ def update(labels, labeler="_unknown", do_purge_nans=True):
                 labels["fr_times"][f_idx] = 0
         labels["version"] = 0
 
-    assert labels["version"] <= version, "Please update ACM traingui"
-
     if Version(labels["version"]) < Version("0.4"):
         labeler = {}
         point_times = {}
@@ -354,7 +352,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
     else:
         target_labels = target_file
 
-    make_global_lists(labels_list)
+    make_global_lists([target_labels]+labels_list)
 
     # Merge file-wise
     data_shape = None
@@ -372,7 +370,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
     index_unmarked = target_labels["labeler_list"].index("_unmarked")  # Labeler are already matched
     index_create = target_labels["action_list"].index("create")
     index_delete = target_labels["action_list"].index("delete")
-    default_action = np.ones(data_shape[0], dtype=int) * index_create,
+    default_action = np.ones(data_shape[0], dtype=int) * index_create
     for i_labels, labels in enumerate(labels_list):
         logger.log(logging.INFO, f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
 
@@ -394,7 +392,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                     # Source is not labeled unmarked
                         (source_entry['labeler'] != index_unmarked) &
                         # Source is not nan
-                        np.all(~np.isnan(source_entry["coords"])) &
+                        np.all(~np.isnan(source_entry["coords"]), axis=-1) &
                         # Action is create
                         (source_entry.get("action", default_action) == index_create) &
                         # Target time is older. We do <= to be able to do in place corrections in the merged files.
@@ -404,9 +402,9 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                 if not overwrite:
                     transfer_mask &= np.all(~np.isnan(target_entry["coords"]))
 
-                target_entry["coords"][transfer_mask] = target_entry["coords"][transfer_mask]
-                target_entry["labeler"][transfer_mask] = target_entry["labeler"][transfer_mask]
-                target_entry["point_times"][transfer_mask] = target_entry["point_times"][transfer_mask]
+                target_entry["coords"][transfer_mask] = source_entry["coords"][transfer_mask]
+                target_entry["labeler"][transfer_mask] = source_entry["labeler"][transfer_mask]
+                target_entry["point_times"][transfer_mask] = source_entry["point_times"][transfer_mask]
 
     sort_dictionaries(target_labels)
 
