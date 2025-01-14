@@ -299,6 +299,10 @@ class RigidTransform:
         self.translation = translation
 
     @staticmethod
+    def identity(len=None):
+        return RigidTransform(rotation=Rotation.identity(len), translation=np.zeros(shape=(len,3)))
+
+    @staticmethod
     def from_matrix(matrix):
         np.testing.assert_allclose(matrix[..., 3, 0:4], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
@@ -507,7 +511,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
         if interpolation_method != "nearest":
             indices = np.digitize(interptimes, times)
             indices = nan_mask[indices] | nan_mask[indices+1]
-            res[indices] = get_nan_rot(np.count_nonzero(indices))
+            res[indices] = get_nan_rot()
         return res
     return funct
 
