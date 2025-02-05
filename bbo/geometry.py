@@ -181,6 +181,21 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     return np.stack([res["rxy".index(a)] for a in equidist], axis=-1)
 
 
+def smooth(data, times, sigma, num_neighbors):
+    num_elements = data.shape[0]
+    accumulated_weights = np.zeros(shape = num_elements, dtype=float)
+    result = np.zeros(shape = data.shape, dtype=float)
+    for i in range(num_neighbors // 2):
+        weights = np.exp(-np.square(times[:num_elements - i] - times[i:]) / (2 * sigma ** 2))
+        accumulated_weights[:num_elements - i] += weights
+        result[:num_elements - i] += weights[:, np.newaxis] * data[i:]
+        if i != 0:
+            accumulated_weights[i:] += weights
+            result[i:] += weights[:, np.newaxis] * data[:num_elements - i]
+    result /= accumulated_weights[:, np.newaxis]
+    return result
+
+
 def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
     """
     Converts equidistant to cartesian coordinates
