@@ -143,8 +143,7 @@ def labels_to_acm(labels):
 
 
 def load(file_path, load_npz=False, v0_format=None):
-    print(file_path)
-    logger.log(logging.INFO, f"Loading {file_path}")
+    logger.log(logging.DEBUG, f"Loading {file_path}")
     if v0_format is None:
         v0_format = True
         logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
@@ -200,7 +199,7 @@ def convert_v1_to_v2(labels):
         'action_list': labels['action_list'],
         'version': "1.0",
     }
-    print("LL",labels['labeler_list'])
+    
     idx_unknown = labels['labeler_list'].index("_unknown")
     for ln in labels['labels']:
         labels_new['labels'][ln] = {}
