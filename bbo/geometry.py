@@ -185,14 +185,17 @@ def smooth(data, times, sigma, num_neighbors):
     num_elements = data.shape[0]
     accumulated_weights = np.zeros(shape = num_elements, dtype=float)
     result = np.zeros(shape = data.shape, dtype=float)
+    factor = 1 / (2 * sigma ** 2)
+    expand_dims = (...,) + (np.newaxis,) * (data.ndim - 1)
+
     for i in range(num_neighbors // 2):
-        weights = np.exp(-np.square(times[:num_elements - i] - times[i:]) / (2 * sigma ** 2))
+        weights = np.exp(-np.square(times[:num_elements - i] - times[i:]) * factor)
         accumulated_weights[:num_elements - i] += weights
-        result[:num_elements - i] += weights[:, np.newaxis] * data[i:]
+        result[:num_elements - i] += weights[expand_dims] * data[i:]
         if i != 0:
             accumulated_weights[i:] += weights
-            result[i:] += weights[:, np.newaxis] * data[:num_elements - i]
-    result /= accumulated_weights[:, np.newaxis]
+            result[i:] += weights[expand_dims] * data[:num_elements - i]
+    result /= accumulated_weights[expand_dims]
     return result
 
 
