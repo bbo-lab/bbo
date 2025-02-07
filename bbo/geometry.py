@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 import scipy.spatial.transform
 from scipy.spatial.transform import Rotation
@@ -276,7 +278,7 @@ def flip_quaternions(rot):
 
 
 class RigidTransform:
-    def __init__(self, rotation: Rotation = Rotation.identity(), translation=None, rotation_type=None):
+    def __init__(self, rotation: Rotation|np.ndarray = Rotation.identity(), translation=None, rotation_type=None):
         if translation is None:
             translation = np.zeros(shape=(1, 3))
         if isinstance(rotation, np.ndarray):
@@ -324,6 +326,18 @@ class RigidTransform:
         new_vec += translations
 
         return new_vec
+
+    def rotate(self, vec):
+        vec_shape = vec.shape
+        if len(vec_shape) > 2:
+            vec = vec.reshape((-1, vec_shape[-1]))
+
+        new_vec = self.rotation.apply(vec)
+
+        if len(vec_shape) > 2:
+            new_vec = new_vec.reshape(vec_shape)
+        return new_vec
+
 
     def rotate_broadcast(self, vec):
         rot_mats = self.rotation.as_matrix()
@@ -379,7 +393,7 @@ class RigidTransform:
         res[(rg, rg)] = 1
         return res
 
-    def inv(self):
+    def inv(self) -> RigidTransform:
         rotinv = inverse_rot(self.rotation)
         return RigidTransform(rotation=rotinv, translation=-rotinv.apply(self.translation))
 
