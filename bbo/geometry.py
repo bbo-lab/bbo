@@ -56,7 +56,7 @@ def from_rotvec_rot(rotvecs):
     return res
 
 
-def smoothrot(r, kernel=[1, 2, 1]):
+def smoothrot(r, kernel=(1, 2, 1)):
     kernel_len = len(kernel)
     res = Rotation.identity(len(r))
     for i in range(len(r) - kernel_len):
@@ -182,7 +182,18 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
 
 
 def smooth(data, times, sigma, num_neighbors):
+    if sigma is None or sigma == 0:
+        return data
     num_elements = data.shape[0]
+    if isinstance(data, Rotation):
+        #Equivalent but slower path for Rotations
+        res = Rotation.identity(len(times))
+        for i in range(num_elements):
+            lhs = max(0, i - num_neighbors // 2)
+            rhs = min(num_elements, i + num_neighbors // 2)
+            kernel = np.exp(-np.square(times[lhs:rhs] - times[i]) / (2 * sigma ** 2))
+            res[i] = mean_rot(data[lhs: rhs], weights=kernel)
+        return res
     accumulated_weights = np.zeros(shape = num_elements, dtype=float)
     result = np.zeros(shape = data.shape, dtype=float)
     factor = 1 / (2 * sigma ** 2)
