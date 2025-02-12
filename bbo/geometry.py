@@ -520,8 +520,8 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
                 raise Exception(f"Boundary {fill_boundary} not known")
         if interpolation_method != "nearest":
             indices = np.digitize(interptimes, times)
-            indices = nan_mask[indices] | nan_mask[indices+1]
-            res[indices] = get_nan_rot(np.count_nonzero(indices))
+            to_nan_mask = nan_mask[indices] | (nan_mask[indices+1] & (times[indices-1]!=interptimes))
+            res[to_nan_mask] = get_nan_rot(np.count_nonzero(to_nan_mask))
         return res
     return funct
 
