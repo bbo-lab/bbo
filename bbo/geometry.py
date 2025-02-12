@@ -58,7 +58,7 @@ def from_rotvec_rot(rotvecs):
     return res
 
 
-def smoothrot(r, kernel=[1, 2, 1]):
+def smoothrot(r, kernel=(1, 2, 1)):
     kernel_len = len(kernel)
     res = Rotation.identity(len(r))
     for i in range(len(r) - kernel_len):
@@ -183,6 +183,35 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     return np.stack([res["rxy".index(a)] for a in equidist], axis=-1)
 
 
+def smooth(data, times, sigma, num_neighbors):
+    if sigma is None or sigma == 0:
+        return data
+    num_elements = data.shape[0]
+    if isinstance(data, Rotation):
+        #Equivalent but slower path for Rotations
+        res = Rotation.identity(len(times))
+        for i in range(num_elements):
+            lhs = max(0, i - num_neighbors // 2)
+            rhs = min(num_elements, i + num_neighbors // 2)
+            kernel = np.exp(-np.square(times[lhs:rhs] - times[i]) / (2 * sigma ** 2))
+            res[i] = mean_rot(data[lhs: rhs], weights=kernel)
+        return res
+    accumulated_weights = np.zeros(shape = num_elements, dtype=float)
+    result = np.zeros(shape = data.shape, dtype=float)
+    factor = 1 / (2 * sigma ** 2)
+    expand_dims = (...,) + (np.newaxis,) * (data.ndim - 1)
+
+    for i in range(num_neighbors // 2):
+        weights = np.exp(-np.square(times[:num_elements - i] - times[i:]) * factor)
+        accumulated_weights[:num_elements - i] += weights
+        result[:num_elements - i] += weights[expand_dims] * data[i:]
+        if i != 0:
+            accumulated_weights[i:] += weights
+            result[i:] += weights[expand_dims] * data[:num_elements - i]
+    result /= accumulated_weights[expand_dims]
+    return result
+
+
 def equidist2cart(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False):
     """
     Converts equidistant to cartesian coordinates
@@ -299,6 +328,10 @@ class RigidTransform:
 
         self.rotation = rotation
         self.translation = translation
+
+    @staticmethod
+    def identity(len=None):
+        return RigidTransform(rotation=Rotation.identity(len), translation=np.zeros(shape=(len,3)))
 
     @staticmethod
     def from_matrix(matrix):
@@ -498,7 +531,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
 
     tmin, tmax = (mtimes[0], mtimes[-1]) if len(mtimes) != 0 else (np.inf, -np.inf)
     # Open bins to the left and right of the original time bins should not be considered
-    # Not that this dumps the last time value when "interpolating" identical,
+    # note that this dumps the last time value when "interpolating" identical,
     # as it belongs to the last bin that is open to the right
     nan_mask = np.zeros(len(rots)+2, dtype=bool)
     nan_mask[1:-1] = isnan_rot(rots)
