@@ -517,7 +517,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
 
     tmin, tmax = (mtimes[0], mtimes[-1]) if len(mtimes) != 0 else (np.inf, -np.inf)
     # Open bins to the left and right of the original time bins should not be considered
-    # Not that this dumps the last time value when "interpolating" identical,
+    # note that this dumps the last time value when "interpolating" identical,
     # as it belongs to the last bin that is open to the right
     nan_mask = np.zeros(len(rots)+2, dtype=bool)
     nan_mask[1:-1] = isnan_rot(rots)
@@ -538,9 +538,9 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
             case _:
                 raise Exception(f"Boundary {fill_boundary} not known")
         if interpolation_method != "nearest":
-            indices = np.digitize(interptimes, times)
-            indices = nan_mask[indices] | nan_mask[indices+1]
-            res[indices] = get_nan_rot()
+            indices = np.digitize(interptimes, times, right=False)
+            replace_mask = nan_mask[indices] | (nan_mask[indices+1] & (times[indices-1] != interptimes))
+            res[replace_mask] = get_nan_rot()
         return res
     return funct
 
