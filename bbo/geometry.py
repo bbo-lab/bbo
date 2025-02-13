@@ -175,7 +175,7 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
     length = np.square(x) + np.square(y)
     norm = np.sqrt(length + np.square(z))
     length = np.sqrt(length)
-    length = np.arctan2(length, -z) / length;
+    length = np.divide(np.arctan2(length, -z), length, where=length!=0)
     res = [norm, x * length, y * length]
     if degrees:
         res[1] = np.rad2deg(res[1])
