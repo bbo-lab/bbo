@@ -15,6 +15,7 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           pip3 install ./
+          wget "https://gist.githubusercontent.com/Back2Basics/0e6456de0395fd200a06/raw/595cc018551c37af88fa2e645dcee38998dab703/deep_eq.py%2520py3.x" -O deep_eq.py
       - name: Test with pytest
         run: |
           pip3 install pytest pytest-cov
