@@ -1,0 +1,2 @@
+variable_1: "foobar"
+variable_2: ["foo", "batz", "bar"]
