@@ -47,7 +47,7 @@ def best_trajectory(distances, transitionmatrix = None):
         #transitionmatrix[np.tril_indices(num_paths, 1)] = 0
         for i in range(num_paths):
             transitionmatrix[i:, i] = 0
-    elif isinstance(transitionmatrix, numbers.Number):
+    elif isinstance(transitionmatrix, numbers):
         transitionmatrix = np.full(shape=(num_paths, num_paths), dtype=float, fill_value=transitionmatrix)
         transitionmatrix[np.diag_indices(num_paths)] = 0
     for i in range(num_timepoints):
@@ -55,7 +55,7 @@ def best_trajectory(distances, transitionmatrix = None):
             dijkstra_indices[i] = np.arange(num_paths)
         else:
             nextdist = dijkstra_dist[np.newaxis, :] + distances[i, :, np.newaxis] + transitionmatrix
-            nextdist[np.isnan(nextdist)] = np.infty
+            nextdist[np.isnan(nextdist)] = np.inf
             dijkstra_indices[i] = np.nanargmin(nextdist, axis=1)
             dijkstra_dist = nextdist[(np.arange(num_paths), dijkstra_indices[i])]
         dijkstra_dist -= np.min(dijkstra_dist)
