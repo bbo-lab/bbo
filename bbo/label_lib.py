@@ -20,7 +20,7 @@ yaml.add_representer(np.ndarray, ndarray_representer)
 version = "1.0"
 
 
-def update(labels, labeler="_unknown", do_purge_nans=True):
+def update(labels, labeler="_unknown", do_purge_nans=False):
     # Old ACM-style labels
     if all([isinstance(k, int) for k in labels.keys()]):
         return acm_to_labels(labels, labeler)
@@ -69,7 +69,7 @@ def update(labels, labeler="_unknown", do_purge_nans=True):
 
     if Version(labels["version"]) < Version("1.0"):
         labels["action_list"] = ["create", "delete"]
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     # Bring labeler list in shape (add specials etc.)
     make_global_lists([labels])
@@ -82,8 +82,9 @@ def update(labels, labeler="_unknown", do_purge_nans=True):
 
 
 def purge_nans(labels):
+    print("Purging nans")
     if legacy := (Version(labels["version"]) < Version("1.0")):
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     del_list = []
     for ln in labels["labels"]:
@@ -95,7 +96,7 @@ def purge_nans(labels):
         del labels["labels"][ln][fr_idx]
 
     if legacy:
-        labels = convert_v2_to_v1(labels)
+        labels = convert_v1_to_v0(labels)
 
     return labels
 
@@ -181,12 +182,12 @@ def load(file_path, load_npz=False, v0_format=None):
         raise e
 
     if v0_format:
-        labels = convert_v2_to_v1(labels)
+        labels = convert_v1_to_v0(labels)
 
     return labels
 
 
-def convert_v1_to_v2(labels):
+def convert_v0_to_v1(labels):
     if Version(labels["version"]) >= Version("1.0"):
         return labels
 
@@ -215,10 +216,11 @@ def convert_v1_to_v2(labels):
                 labels_new['labels'][ln][fr_idx]['point_times'] = labels['point_times'][ln][fr_idx]
         except:
             logger.log(logging.WARN, "Additional info was not found in file")
+
     return update(labels_new)
 
 
-def convert_v2_to_v1(labels):
+def convert_v1_to_v0(labels):
     if Version(labels["version"]) < Version("1.0"):
         return labels
 
@@ -266,11 +268,10 @@ def save(file_path, labels, yml_only=False, v0_format=False):
     #     logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
     #                    "Behavior will be changed after publication of bird paper. Use v0_format=True to "
     #                    "suppress this message.")
-
     labels = update(labels)
 
     if v0_format:
-        labels = convert_v2_to_v1(labels)
+        labels = convert_v1_to_v0(labels)
 
     if isinstance(file_path, str):
         file_path = Path(file_path)
@@ -306,7 +307,7 @@ def get_labeled_frame_idxs(labels, label_set=None):
 
 def get_labels_from_frame(labels, frame_idx):
     if legacy := (Version(labels["version"]) < Version("1.0")):
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     frame_labels = {}
 
@@ -319,7 +320,7 @@ def get_labels_from_frame(labels, frame_idx):
 
 def get_frame_labelers(labels, fr_idx, cam_idx=None):
     if legacy := (Version(labels["version"]) < Version("1.0")):
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     labeler_idxs = set()
     for ln in labels["labels"]:
@@ -539,7 +540,7 @@ def to_numpy(labels,
              label_identity=None,  # Treat as identical labels (nanmean if both are labeled)
              ):
     if legacy := (Version(labels["version"]) < Version("1.0")):
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     cams_n = get_n_cams(labels)
 
@@ -601,7 +602,7 @@ def to_numpy(labels,
 
 def to_pandas(labels):
     if legacy := (Version(labels["version"]) < Version("1.0")):
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     import pandas as pd  # We don't want this as a global dependency
     label_names = get_labels(labels)
@@ -792,10 +793,11 @@ def read_label_yaml_v1(file):
 
 # pyyaml is WAY too slow for large files
 def write_label_yaml_v2(file_handle, labels):
+
     f = file_handle
 
     if "labeler" in labels:
-        labels = convert_v1_to_v2(labels)
+        labels = convert_v0_to_v1(labels)
 
     yi = 2 * " "  # yaml_indent
 
