@@ -99,8 +99,9 @@ def from_euler_rot(seq, angles, degrees=False):
 def inverse_rot(r):
     mask = np.logical_not(isnan_rot(r))
     if isinstance(mask, np.ndarray):
-        res = Rotation.from_rotvec(np.full(fill_value=np.nan, shape=(len(r), 3)))
-        res[mask] = r[mask].inv()
+        res = get_nan_rot(len(r))
+        if np.count_nonzero(mask) != 0:
+            res[mask] = r[mask].inv()
         return res
     if mask:
         return r.inv()
@@ -186,8 +187,8 @@ def cart2equidistant(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=Fal
 def smooth(data, times, sigma, num_neighbors):
     if sigma is None or sigma == 0:
         return data
-    num_elements = data.shape[0]
     if isinstance(data, Rotation):
+        num_elements = len(data)
         #Equivalent but slower path for Rotations
         res = Rotation.identity(len(times))
         for i in range(num_elements):
@@ -196,6 +197,8 @@ def smooth(data, times, sigma, num_neighbors):
             kernel = np.exp(-np.square(times[lhs:rhs] - times[i]) / (2 * sigma ** 2))
             res[i] = mean_rot(data[lhs: rhs], weights=kernel)
         return res
+    num_elements = data.shape[0]
+
     accumulated_weights = np.zeros(shape = num_elements, dtype=float)
     result = np.zeros(shape = data.shape, dtype=float)
     factor = 1 / (2 * sigma ** 2)
@@ -554,7 +557,9 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
         if interpolation_method != "nearest":
             indices = np.digitize(interptimes, times)
             to_nan_mask = nan_mask[indices] | (nan_mask[indices+1] & (times[indices-1]!=interptimes))
-            res[to_nan_mask] = get_nan_rot(np.count_nonzero(to_nan_mask))
+            count = np.count_nonzero(to_nan_mask)
+            if count > 0:
+                res[to_nan_mask] = get_nan_rot(np.count_nonzero(to_nan_mask))
         return res
     return funct
 
