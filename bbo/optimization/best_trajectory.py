@@ -1,5 +1,5 @@
 import numpy as np
-from deepdiff.helper import numbers
+import numbers
 
 
 def test_best_trajectory():
@@ -42,12 +42,12 @@ def best_trajectory(distances, transitionmatrix = None):
     dijkstra_dist = np.zeros(shape=num_paths, dtype=float)
     dijkstra_indices = np.empty(shape=distances.shape, dtype=int)
     if transitionmatrix=="triangle":
-        transitionmatrix = np.full(shape=(num_paths, num_paths), dtype=float, fill_value=np.infty)
+        transitionmatrix = np.full(shape=(num_paths, num_paths), dtype=float, fill_value=np.inf)
         #transitionmatrix[np.triu_indices(num_paths, 1)] = 0 #Todo check which one is correct
         #transitionmatrix[np.tril_indices(num_paths, 1)] = 0
         for i in range(num_paths):
             transitionmatrix[i:, i] = 0
-    elif isinstance(transitionmatrix, numbers):
+    elif isinstance(transitionmatrix, numbers.Number):
         transitionmatrix = np.full(shape=(num_paths, num_paths), dtype=float, fill_value=transitionmatrix)
         transitionmatrix[np.diag_indices(num_paths)] = 0
     for i in range(num_timepoints):
