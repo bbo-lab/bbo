@@ -336,7 +336,7 @@ def get_frame_labelers(labels, fr_idx, cam_idx=None):
     return labelers
 
 
-def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, times_to_0=True):
+def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, times_to_0=True, nan_deletes=False):
     # Load data from files
     labels_list = [update(ll) if isinstance(ll, dict) else load(ll, v0_format=False) for ll in labels_list]
     # Normalize path of target_file
@@ -388,16 +388,15 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                 target_entry = target_labels["labels"][ln][fr_idx]
                 source_entry = labels["labels"][ln][fr_idx]
 
-                transfer_mask = (
-                    # Source is not labeled unmarked
-                        (source_entry['labeler'] != index_unmarked) &
-                        # Source is not nan
-                        np.all(~np.isnan(source_entry["coords"]), axis=-1) &
-                        # Action is create
-                        (source_entry.get("action", default_action) == index_create) &
-                        # Target time is older. We do <= to be able to do in place corrections in the merged files.
-                        (target_entry["point_times"] <= source_entry["point_times"])
-                )
+                # Source is not labeled unmarked
+                transfer_mask = source_entry['labeler'] != index_unmarked
+                # Action is create
+                transfer_mask &= source_entry.get("action", default_action) == index_create
+                # Target time is older. We do <= to be able to do in place corrections in the merged files.
+                transfer_mask &= target_entry["point_times"] <= source_entry["point_times"]
+                # Source is not nan
+                if not nan_deletes:
+                    transfer_mask &= np.all(~np.isnan(source_entry["coords"]), axis=-1)
 
                 if not overwrite:
                     transfer_mask &= np.all(~np.isnan(target_entry["coords"]))
