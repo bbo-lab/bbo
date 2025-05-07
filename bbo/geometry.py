@@ -331,6 +331,7 @@ class RigidTransform:
 
         self.rotation = rotation
         self.translation = translation
+        self.single = rotation.single
 
     @staticmethod
     def identity(len=None):
@@ -422,9 +423,12 @@ class RigidTransform:
     def as_matrix(self, shape=None):
         if shape is None:
             shape = (4, 4)
+        if not self.single and len(shape) == 2:
+            shape = (len(self), *shape)
+
         res = np.zeros(shape=shape, dtype=float)
-        res[0:3, 0:3] = self.rotation.as_matrix()
-        res[0:3, 3] = self.translation
+        res[...,0:3, 0:3] = self.rotation.as_matrix()
+        res[...,0:3, 3] = self.translation
         rg = np.arange(3, np.maximum(3, np.min(shape)))
         res[(rg, rg)] = 1
         return res
@@ -626,6 +630,19 @@ def intersect(bases, vecs):
         return intersections
 
 
+def point_line_distance(bases, vecs, points, outer=False):
+    points = np.asarray(points, dtype=np.float64)
+    if bases.ndim == 1 and points.ndim > 1:
+        bases = bases[np.newaxis, :]
+        vecs = vecs[np.newaxis, :]
+    if outer:
+        bases = bases[:, np.newaxis, :]
+        vecs = vecs[:, np.newaxis, :]
+    d = points - bases
+    proj_vecs = d - np.sum(d * vecs, axis=-1, keepdims=True) * vecs
+    dists = np.linalg.norm(proj_vecs, axis=-1)
+    return dists
+
 class Line:
     def __init__(self, position=None, direction=None, lines=None, dtype=np.float64):
         if lines is not None:
@@ -681,21 +698,7 @@ class Line:
         :return: (N,) array of distances if N matches the number of lines and outer is False
         :return: (N, M) array of distances if N is different from M (number of lines) and outer is True
         """
-
-        self.normalize()
-        p = self.position
-        v = self.direction
-        x = np.asarray(x, dtype=np.float64)
-        if self.is_single() and x.ndim > 1:
-            p = p[np.newaxis, :]
-            v = v[np.newaxis, :]
-        if outer:
-            p = p[:, np.newaxis, :]
-            v = v[:, np.newaxis, :]
-        d = x - p
-        proj_vecs = d - np.sum(d * v, axis=-1, keepdims=True) * v
-        dists = np.linalg.norm(proj_vecs, axis=-1)
-        return dists
+        return point_line_distance(self.position, self.direction / np.linalg.norm(self.direction, axis=-1, keepdims=True), x, outer=outer)
 
     def normalize(self):
         self.direction /= np.linalg.norm(self.direction, axis=-1, keepdims=True)
@@ -793,14 +796,19 @@ class AffineTransformation:
             self.mat = np.copy(mat)
         if not isinstance(self.mat, np.ndarray):
             raise Exception(f'Wrong matrix type {type(self.mat)}')
-        self.mat[3, 0:3] = 0
-        self.mat[3, 3] = 1
+        self.mat[...,3, 0:3] = 0
+        self.mat[...,3, 3] = 1
+
+    @staticmethod
+    def from_matrix(mat):
+        return AffineTransformation(mat)
+
 
     def inv(self):
         return AffineTransformation(np.linalg.inv(self.mat))
 
     def apply(self, points):
-        return (points @ self.mat[0:3, 0:3].T) + self.mat[0:3, 3]
+        return (points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)) + self.mat[...,0:3, 3]
 
     def linear(self):
         return LinearTransformation(self.mat[0:3, 0:3])

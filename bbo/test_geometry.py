@@ -42,16 +42,16 @@ class TestSimpleFunctions(unittest.TestCase):
 
 class TestCoordinateTransformations(unittest.TestCase):
     def test_coordinate_inverse(self):
-        rnd = np.random.default_rng(1)
+        rng = np.random.default_rng(1)
         for i in range(10):
-            cart = [rnd.normal(loc=0, size=3)]
+            cart = [rng.normal(loc=0, size=3)]
             sph = geometry.cart2spherical(cart)
             np.testing.assert_allclose(geometry.spherical2cart(sph), cart)
 
     def test_chain(self):
-        rnd = np.random.default_rng(1)
-        mirror0 = geometry.AffineTransformation(geometry.Mirror(normal=rnd.normal(size=3), tr=rnd.normal()))
-        rigid0 = geometry.RigidTransform(rotation=R.from_rotvec(rnd.normal(size=3)), translation=rnd.normal(size=3))
+        rng = np.random.default_rng(1)
+        mirror0 = geometry.AffineTransformation(geometry.Mirror(normal=rng.normal(size=3), tr=rng.normal()))
+        rigid0 = geometry.RigidTransform(rotation=R.from_rotvec(rng.normal(size=3)), translation=rng.normal(size=3))
         mirror1 = geometry.AffineTransformation(geometry.Reflection(normal=np.array([1, 0, 0])))
         point = np.array([1, 2, 3])
         ppoint = np.asarray([1, 2, 3, 1])
@@ -78,26 +78,33 @@ class TestCoordinateTransformations(unittest.TestCase):
             normal=np.array([0, 1, 0]),
             p=np.array([1, 5, 8]))
 
-        rnd = np.random.default_rng(1)
+        rng = np.random.default_rng(1)
         run_on_data(
-            c2t=geometry.RigidTransform(rotation=R.random(random_state=rnd),translation=rnd.normal(size=3)),
-            pom=rnd.normal(size=3),
-            normal=rnd.normal(size=3),
-            p=rnd.normal(size=3))
+            c2t=geometry.RigidTransform(rotation=R.random(random_state=rng),translation=rng.normal(size=3)),
+            pom=rng.normal(size=3),
+            normal=rng.normal(size=3),
+            p=rng.normal(size=3))
 
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
-        rnd = np.random.default_rng(1)
-        af0 = geometry.AffineTransformation(rnd.normal(size=(4,4)))
-        af1 = geometry.AffineTransformation(rnd.normal(size=(4,4)))
-        randvec = rnd.normal(size=3)
+        rng = np.random.default_rng(1)
+        af0 = geometry.AffineTransformation(rng.normal(size=(4,4)))
+        af1 = geometry.AffineTransformation(rng.normal(size=(4,4)))
+        randvec = rng.normal(size=3)
         np.testing.assert_allclose((af1 * af0).apply(randvec), af1.apply(af0.apply(randvec)))
 
 
+    def test_apply(self):
+        rng = np.random.default_rng(1)
+        af = geometry.AffineTransformation(rng.normal(size=(4, 4)))
+        randvec = rng.normal(size=3)
+        np.testing.assert_allclose(af.apply(randvec), af.as_matrix(shape=(3, 4)) @ np.append(randvec, 1))
+
+
     def test_constructor(self):
-        rnd = np.random.default_rng(1)
+        rng = np.random.default_rng(1)
         r = R.random()
-        randvec = rnd.normal(size=3)
+        randvec = rng.normal(size=3)
         np.testing.assert_allclose(geometry.AffineTransformation(r).apply(randvec), r.apply(randvec))
 
 
