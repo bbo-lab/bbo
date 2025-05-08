@@ -978,3 +978,37 @@ class Mirror:
 
     def __str__(self):
         return f"{self.normal} * x = {self.tr}"
+
+
+def connect_segments(data:np.ndarray, modulo:float|int) -> np.ndarray:
+    """
+    Adjusts the values in a sequence to correct for discontinuities across a modular boundary.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        The input array containing the sequence of values to be adjusted. Typically represents
+        a series of phase measurements or wrapped angles.
+    modulo : float or int
+        The modular boundary at which discontinuities are detected. Values outside the range
+        of `-modulo/2` to `modulo/2` will be shifted accordingly.
+
+    Returns
+    -------
+    np.ndarray
+        The adjusted array, with discontinuities corrected to provide a continuous sequence.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.array([350, 10, 20, -20, 0, 360])
+    >>> connect_segments(data, 360)
+    array([350, 370, 380, 340, 360, 360])
+    """
+
+    differences = np.diff(data)
+    flips = np.round(differences / modulo).astype(int)
+    flips = np.cumsum(flips)
+    data = np.copy(data)
+    data[1:] -= flips * modulo
+    return data
