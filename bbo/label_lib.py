@@ -25,14 +25,14 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
     if all([isinstance(k, int) for k in labels.keys()]):
         return acm_to_labels(labels, labeler)
 
+    # Before versioning
     if "version" not in labels:
         labels["version"] = "0.1"
 
     if not isinstance(labels['version'], str):
         labels['version'] = str(labels['version'])
 
-    # Before versioning
-    if Version(labels["version"]) <= Version("0.2"):
+    if Version(labels["version"]) < Version("0.3"):
         if "labeler" not in labels:
             labels["labeler"] = {}
         if "labeler_list" not in labels:
@@ -46,9 +46,9 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
         for f_idx in labeled_frame_idxs:
             if f_idx not in labels["labeler"]:
                 labels["labeler"][f_idx] = labeler_idx
-            if f_idx not in labels["fr_times"]:
+            if "fr_times" in labels and f_idx not in labels["fr_times"]:
                 labels["fr_times"][f_idx] = 0
-        labels["version"] = 0
+        labels["version"] = "0.3"
 
     if Version(labels["version"]) < Version("0.4"):
         labeler = {}
@@ -61,11 +61,13 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
                 labeler[ln][fr_idx] = np.ones(data_shape[0], dtype=np.uint16) * labels['labeler'][fr_idx]
                 nanmask = np.any(np.isnan(labels["labels"][ln][fr_idx]), axis=1)
                 labeler[ln][fr_idx][nanmask] = 0
-                point_times[ln][fr_idx] = np.ones(data_shape[0], dtype=np.uint64) * labels['fr_times'][fr_idx]
+                factor = labels['fr_times'][fr_idx] if 'fr_times' in labels else 1
+                point_times[ln][fr_idx] = np.ones(data_shape[0], dtype=np.uint64) * factor
 
         labels["point_times"] = point_times
         labels["labeler"] = labeler
-        labels.pop("fr_times")
+        if 'fr_times' in labels:
+            labels.pop("fr_times")
 
     if Version(labels["version"]) < Version("1.0"):
         labels["action_list"] = ["create", "delete"]
@@ -82,7 +84,6 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
 
 
 def purge_nans(labels):
-    print("Purging nans")
     if legacy := (Version(labels["version"]) < Version("1.0")):
         labels = convert_v0_to_v1(labels)
 
@@ -514,7 +515,10 @@ def make_global_lists(labels_list):
 def get_data_shape(labels):
     for ln in labels['labels']:
         for fr_idx in labels['labels'][ln]:
-            return labels['labels'][ln][fr_idx]["coords"].shape
+            if Version(labels['version']) < Version("1.0"):
+                return labels['labels'][ln][fr_idx].shape
+            else:
+                return labels['labels'][ln][fr_idx]["coords"].shape
     raise NoDataException("Did not find any data to determine data shape")
 
 
