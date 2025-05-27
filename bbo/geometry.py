@@ -66,6 +66,19 @@ def smoothrot(r, kernel=(1, 2, 1)):
     return res
 
 
+#Matrix shape is (...,3,3)
+def rot_from_nanmatrix(matrices):
+    if matrices.ndim == 2:
+        if np.any(np.isnan(matrices)):
+            return get_nan_rot()
+        return Rotation.from_matrix(matrices)
+    if matrices.ndim == 3:
+        mask = ~np.any(np.isnan(matrices), axis=(-2, -1))
+        res = get_nan_rot(len(matrices))
+        if np.any(mask):
+            res[mask] = Rotation.from_matrix(matrices[mask])
+        return res
+
 def isnan_rot(r, inverted=False):
     result = np.isnan(r.magnitude())
     if inverted:
@@ -771,7 +784,10 @@ class LinearTransformation:
         return LinearTransformation(np.linalg.inv(self.mat))
 
     def apply(self, points):
-        return points @ self.mat.T
+        return points @ np.swapaxes(self.mat, -1, -2)
+
+    def as_matrix(self):
+        return self.mat
 
     def __mul__(self, other):
         if isinstance(other, AffineTransformation):
@@ -784,6 +800,14 @@ class AffineTransformation:
         if isinstance(mat, Rotation):
             self.mat = np.eye(4, dtype=float)
             self.mat[0:3, 0:3] = mat.as_matrix()
+        elif isinstance(mat, tuple) and len(mat) == 2:
+            self.mat = np.eye(4, dtype=float)
+            if isinstance(mat[0], Rotation):
+                self.mat[0:3, 0:3] = mat[0].as_matrix()
+            elif mat[0] is not None:
+                self.mat[0:3, 0:3] = mat[0]
+            if mat[1] is not None:
+                 self.mat[0:3, 3] = mat[1]
         elif isinstance(mat, LinearTransformation):
             self.mat = np.eye(4, dtype=float)
             self.mat[0:3, 0:3] = mat.mat
@@ -791,10 +815,14 @@ class AffineTransformation:
             self.mat = mat.mat
         elif isinstance(mat, (RigidTransform, Reflection, Mirror)):
             self.mat = mat.as_matrix(shape=(4, 4))
+        elif isinstance(mat, np.ndarray):
+            if mat.shape[-1] == 4 and mat.shape[-2] == 4:
+                self.mat = np.copy(mat)
+            else:
+                self.mat = np.zeros(shape=(*mat.shape[0:-2], 4, 4), dtype=float)
+                self.mat[...,0:mat.shape[-2], 0:mat.shape[-1]] = mat
         else:
-            self.mat = np.copy(mat)
-        if not isinstance(self.mat, np.ndarray):
-            raise Exception(f'Wrong matrix type {type(self.mat)}')
+            raise Exception(f'Wrong matrix type {type(mat)}')
         self.mat[...,3, 0:3] = 0
         self.mat[...,3, 3] = 1
 
@@ -802,6 +830,27 @@ class AffineTransformation:
     def from_matrix(mat):
         return AffineTransformation(mat)
 
+    @staticmethod
+    def identity():
+        return AffineTransformation(np.eye(4, dtype=float))
+
+    def to_dict(self):
+        return {
+            "mat": self.mat,
+            "type": "AffineTransformation"
+        }
+
+    @staticmethod
+    def from_dict(data):
+        if data["type"] != "AffineTransformation":
+            raise ValueError("Invalid type for AffineTransformation")
+        return AffineTransformation(data["mat"])
+
+    def get_scaling(self, keepdims=False):
+        return np.linalg.norm(self.mat[...,0:3, 0:3], axis=-2, keepdims=keepdims)
+
+    def get_translation(self):
+        return self.mat[..., 0:3, 3]
 
     def inv(self):
         return AffineTransformation(np.linalg.inv(self.mat))
@@ -819,6 +868,12 @@ class AffineTransformation:
         if not isinstance(other, AffineTransformation):
             other = AffineTransformation(other)
         return AffineTransformation(self.mat @ other.mat)
+
+    def __repr__(self):
+        return f"AffineTransformation({self.mat})"
+
+    def __str__(self):
+        return f"AffineTransformation({self.mat})"
 
 
 class Reflection:
