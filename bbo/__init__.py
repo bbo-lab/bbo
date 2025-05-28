@@ -1,2 +1,2 @@
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 from bbo.path_management import get_replace_dict

@@ -12,6 +12,9 @@ def check_header(file, recursive=None):
 
 
 def check_dep_header(file, recursive=None):
+    if os.name == 'nt':
+        return True
+    
     # Recursive may be bool or an integer to
     if recursive is None:
         recursive = False
