@@ -2,13 +2,13 @@ import numpy as np
 from bbo import geometry
 from scipy.interpolate import interp1d
 
-def calc_time_offsets(traces_y, traces_t, align_range = (-0.1, 0.1), test_range = (-0.05, 0.05), iterations = 5,
+def calc_time_offsets(traces_y, traces_t, align_range = (-0.1, 0.1), test_space = (-0.05, 0.05, 1000), iterations = 5,
                       distancefunction="euclidean-normalized"):
     # Aligns 0 values of traces_t such that distance of traces_y is minimized according to distancefunction. Final 0
     # value is initialized to traces_t[0], but eventually arbitrary.
     assert all([len(y) == len(t) for y, t in zip(traces_y, traces_t)]), "Trace t and y must match"
     timeoffsets = np.zeros(shape=(len(traces_y)))
-    testoffsets = np.linspace(*test_range, 1000)
+    testoffsets = np.linspace(*test_space)
 
     allazimuth = traces_y[0]
     alltimes = traces_t[0]
