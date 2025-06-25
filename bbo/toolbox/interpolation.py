@@ -13,18 +13,18 @@ def calc_time_offsets(traces_y, traces_t, align_range = (-0.1, 0.1), test_space 
     allazimuth = traces_y[0]
     alltimes = traces_t[0]
     for i in range(iterations):
-            for i_trace, (y, t) in enumerate(zip(traces_y, traces_t)):
-                t = t - timeoffsets[i_trace]
+        for i_trace, (y, t) in enumerate(zip(traces_y, traces_t)):
+            t = t - timeoffsets[i_trace]
 
-                indices = np.where((align_range[0] <= t) & (t <= align_range[1]))[0]
+            indices = np.where((align_range[0] <= t) & (t <= align_range[1]))[0]
 
-                correlation = cross_similarity(y[indices], t[indices],
-                                               allazimuth, alltimes, testoffsets, min_exist=5,
-                                               distancefunction=distancefunction)
-                
-                timeoffsets[i_trace] += testoffsets[np.argmin(correlation)]
+            correlation = cross_similarity(y[indices], t[indices],
+                                           allazimuth, alltimes, testoffsets, min_exist=5,
+                                           distancefunction=distancefunction)
 
-            allazimuth, variance, alltimes = get_average_signal(traces_y, traces_t, timeoffsets=timeoffsets)
+            timeoffsets[i_trace] += testoffsets[np.argmin(correlation)]
+
+        allazimuth, variance, alltimes = get_average_signal(traces_y, traces_t, timeoffsets=timeoffsets, timewindow=np.max(np.abs(align_range)))
     return timeoffsets
 
 
