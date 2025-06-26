@@ -20,9 +20,9 @@ def calc_time_offsets(traces_y, traces_t, align_range = (-np.inf, np.inf), test_
         for i_trace, (y, t) in enumerate(zip(traces_y, traces_t)):
             t = t - timeoffsets[i_trace]
 
-            indices = np.where((align_range[0] <= t) & (t <= align_range[1]))[0]
+            mask = (align_range[0] <= t) & (t <= align_range[1])
 
-            correlation = cross_similarity(y[indices], t[indices],
+            correlation = cross_similarity(y[mask], t[mask],
                                            allazimuth, alltimes, testoffsets, min_exist=5,
                                            distancefunction=distancefunction)
 
@@ -32,20 +32,29 @@ def calc_time_offsets(traces_y, traces_t, align_range = (-np.inf, np.inf), test_
     return timeoffsets
 
 
-def align_by_logistic(traces_y, traces_t, align_range = (-np.inf, np.inf)):
+def align_by_logistic(traces_y, traces_t, align_range = (-np.inf, np.inf), return_fits=False):
     from scipy.optimize import curve_fit
 
-    def sigmoid(xdata, L, x0, k, b):
+    def logistic(xdata, L, x0, k, b):
         ydata = L / (1 + np.exp(-k * (xdata - x0))) + b
         return (ydata)
 
     timeoffsets = []
+    logistics = []
     for y, t in zip(traces_y, traces_t):
+        mask = (align_range[0] <= t) & (t <= align_range[1])
+
         k0 = 10 / np.diff(y[(0, -1),])[0]
         p0 = [max(y), np.median(t), k0, min(y)]
-        popt, pcov = curve_fit(sigmoid, t, y, p0, method='dogbox')
+        popt, pcov = curve_fit(logistic, t[mask], y[mask], p0, method='dogbox')
         timeoffsets.append(popt[1])
-    return np.array(timeoffsets)
+        if return_fits:
+            logistics.append(logistic(t, *popt))
+
+    if return_fits:
+        return np.array(timeoffsets), logistics
+    else:
+        return np.array(timeoffsets)
 
 
 def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, value_offsets=None, timewindow=0.1, sigma=0.0, method="interpolate", only_valid=True):
