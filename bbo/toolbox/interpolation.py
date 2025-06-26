@@ -2,8 +2,12 @@ import numpy as np
 from bbo import geometry
 from scipy.interpolate import interp1d
 
-def calc_time_offsets(traces_y, traces_t, align_range = (-0.1, 0.1), test_space = (-0.05, 0.05, 1000), iterations = 5,
+def calc_time_offsets(traces_y, traces_t, align_range = (-np.inf, np.inf), test_space = None, iterations = 5,
                       distancefunction="euclidean-normalized"):
+
+    if test_space is None:
+        test_space = (traces_t[0], traces_t[-1], 1000)
+
     # Aligns 0 values of traces_t such that distance of traces_y is minimized according to distancefunction. Final 0
     # value is initialized to traces_t[0], but eventually arbitrary.
     assert all([len(y) == len(t) for y, t in zip(traces_y, traces_t)]), "Trace t and y must match"
@@ -26,6 +30,22 @@ def calc_time_offsets(traces_y, traces_t, align_range = (-0.1, 0.1), test_space 
 
         allazimuth, variance, alltimes = get_average_signal(traces_y, traces_t, timeoffsets=timeoffsets, timewindow=np.max(np.abs(align_range)))
     return timeoffsets
+
+
+def align_by_logistic(traces_y, traces_t, align_range = (-np.inf, np.inf)):
+    from scipy.optimize import curve_fit
+
+    def sigmoid(xdata, L, x0, k, b):
+        ydata = L / (1 + np.exp(-k * (xdata - x0))) + b
+        return (ydata)
+
+    timeoffsets = []
+    for y, t in zip(traces_y, traces_t):
+        k0 = 10 / np.diff(y[(0, -1),])[0]
+        p0 = [max(y), np.median(t), k0, min(y)]
+        popt, pcov = curve_fit(sigmoid, t, y, p0, method='dogbox')
+        timeoffsets.append(popt[1])
+    return np.array(timeoffsets)
 
 
 def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, value_offsets=None, timewindow=0.1, sigma=0.0, method="interpolate", only_valid=True):
