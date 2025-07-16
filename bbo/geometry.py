@@ -54,7 +54,8 @@ def from_quat_rot(quats):
 def from_rotvec_rot(rotvecs):
     mask = ~np.any(np.isnan(rotvecs), axis=1)
     res = Rotation.from_rotvec(np.full(shape=(len(mask), 3), fill_value=np.nan))
-    res[mask] = Rotation.from_rotvec(rotvecs[mask])
+    if np.any(mask):
+        res[mask] = Rotation.from_rotvec(rotvecs[mask])
     return res
 
 
