@@ -279,7 +279,7 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     return np.stack([res["xyz".index(a)] for a in cart], axis=-1)
 
 
-def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis="", center_inclination=False, degrees=False):
+def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis:str="", center_inclination:bool=False, degrees:bool=False, xp=np):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -296,22 +296,22 @@ def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis="", center_inc
     Returns
 
     """
-    vec = np.moveaxis(np.asarray(vec), -1, 0)
+    vec = xp.moveaxis(xp.asarray(vec), -1, 0)
     vec = vec[([cart.index(a) for a in "xyz"],)]
     for a in invertaxis:
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
     x, y, z = vec
-    sum = np.square(x) + np.square(y)
-    azimuth = np.arctan2(y, x)
-    inclination = np.arctan2(np.sqrt(sum), z)
+    sum = xp.square(x) + xp.square(y)
+    azimuth = xp.arctan2(y, x)
+    inclination = xp.arctan2(xp.sqrt(sum), z)
     if center_inclination:
-        inclination -= np.pi / 2
+        inclination -= xp.pi / 2
     if degrees:
-        azimuth = np.rad2deg(azimuth)
-        inclination = np.rad2deg(inclination)
-    res = [np.sqrt(sum + np.square(z)), inclination, azimuth]
-    return np.stack([res["ria".index(a)] for a in sph], axis=-1)
+        azimuth = xp.rad2deg(azimuth)
+        inclination = xp.rad2deg(inclination)
+    res = [xp.sqrt(sum + xp.square(z)), inclination, azimuth]
+    return xp.stack([res["ria".index(a)] for a in sph], axis=-1)
 
 
 def flip_quaternions(rot):
@@ -349,6 +349,19 @@ class RigidTransform:
     @staticmethod
     def identity(len=None):
         return RigidTransform(rotation=Rotation.identity(len), translation=np.zeros(shape=(len,3)))
+
+    @staticmethod
+    def align_points(a, b, weights=None):
+        """
+        Aligns two sets of points a and b using the Kabsch algorithm.
+        :param a:
+        :param b:
+        :param weights:
+        :return: RigidTransform object representing the rotation and translation that aligns b to a, ie RT(b) ≈ a.
+        """
+        amean, bmean = np.average(a, weights=weights, axis=0), np.average(b, weights=weights, axis=0)
+        rotation, _ = Rotation.align_vectors(a - amean[np.newaxis,...], b - bmean[np.newaxis,...], weights=weights)
+        return RigidTransform(rotation=rotation, translation=amean - rotation.apply(bmean))
 
     @staticmethod
     def from_matrix(matrix):
@@ -469,13 +482,13 @@ class RigidTransform:
         if flip_quats:
             rot = flip_quaternions(rot)
         return {
-            f"{prefix}x{suffix}": self.translation[:, 0],
-            f"{prefix}y{suffix}": self.translation[:, 1],
-            f"{prefix}z{suffix}": self.translation[:, 2],
-            f"{prefix}rx{suffix}": rot[:, 0],
-            f"{prefix}ry{suffix}": rot[:, 1],
-            f"{prefix}rz{suffix}": rot[:, 2],
-            f"{prefix}rw{suffix}": rot[:, 3]}
+            f"{prefix}x{suffix}": self.translation[..., 0],
+            f"{prefix}y{suffix}": self.translation[..., 1],
+            f"{prefix}z{suffix}": self.translation[..., 2],
+            f"{prefix}rx{suffix}": rot[..., 0],
+            f"{prefix}ry{suffix}": rot[..., 1],
+            f"{prefix}rz{suffix}": rot[..., 2],
+            f"{prefix}rw{suffix}": rot[..., 3]}
 
     @staticmethod
     def from_map(map, suffix=""):
@@ -677,6 +690,9 @@ class Line:
     def intersect(self):
         return intersect(self.position, self.direction)
 
+    def get_endpoints(self):
+        return np.stack((self.position, self.position + self.direction), axis=-2)
+
     def __repr__(self):
         return f"{self.position} + t * {self.direction}"
 
@@ -820,7 +836,7 @@ class AffineTransformation:
             if mat.shape[-1] == 4 and mat.shape[-2] == 4:
                 self.mat = np.copy(mat)
             else:
-                self.mat = np.zeros(shape=(*mat.shape[0:-2], 4, 4), dtype=float)
+                self.mat = np.zeros_like(mat, shape=(*mat.shape[0:-2], 4, 4))
                 self.mat[...,0:mat.shape[-2], 0:mat.shape[-1]] = mat
         else:
             raise Exception(f'Wrong matrix type {type(mat)}')
@@ -859,11 +875,30 @@ class AffineTransformation:
     def apply(self, points):
         return (points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)) + self.mat[...,0:3, 3]
 
+    def apply_on_vector(self, vectors):
+        return vectors @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)
+
     def linear(self):
         return LinearTransformation(self.mat[0:3, 0:3])
 
     def as_matrix(self, shape=None):
         return self.mat if shape is None else self.mat[..., 0:shape[0], 0:shape[1]]
+
+    def __getitem__(self, key):
+        return AffineTransformation(self.mat[key])
+
+    def __setitem__(self, index, value):
+        if isinstance(value, AffineTransformation):
+            self.mat[index] = value.mat
+        elif isinstance(value, np.ndarray) and value.shape == (4, 4):
+            self.mat[index] = value
+        else:
+            raise ValueError(f"Cannot set item with type {type(value)}")
+
+    def __len__(self):
+        if self.mat.ndim < 2:
+            raise Exception('Not an array')
+        return len(self.mat)
 
     def __mul__(self, other):
         if not isinstance(other, AffineTransformation):
@@ -917,12 +952,12 @@ class Mirror:
         self.normal = normal
 
         if point_on_mirror is not None:
-            self.point_on_mirror = point_on_mirror
-            self.tr = np.dot(self.normal, self.point_on_mirror)
+            self.point_on_mirror:np.ndarray = point_on_mirror
+            self.tr:float = np.dot(self.normal, self.point_on_mirror)
 
         if tr is not None:
-            self.tr = tr
-            self.point_on_mirror = self.normal * self.tr
+            self.tr:float = tr
+            self.point_on_mirror:np.ndarray = self.normal * self.tr
 
         self.M = get_mirror_matrix(self.normal)
         self.HomTr = get_homogenuous_transformation_from_mirror(self.normal, self.tr)
@@ -988,11 +1023,10 @@ class Mirror:
             raise Exception('Not an array')
         return self.normal.shape[0]
 
-    def apply_on_line(self, line):
+    def apply_on_line(self, line: Line|np.ndarray):
+        if isinstance(line, Line):
+            return Line(direction=self.apply_on_vector(line.direction), position=self.apply_on_point(line.position))
         return self.apply_on_vector(line[0]), self.apply_on_point(line[1])
-
-    def apply_on_line(self, line: Line):
-        return Line(direction=self.apply_on_vector(line.direction), position=self.apply_on_point(line.position))
 
     def copy(self):
         return Mirror(normal=np.copy(self.normal), tr=np.copy(self.tr))
@@ -1001,20 +1035,25 @@ class Mirror:
         return (self.tr - np.dot(self.normal, line.position)) / np.dot(self.normal, line.direction.T)
 
     def distance_to_mirror_plane(self, vectors):
-        return np.dot(self.normal, vectors) - self.tr
+        return vectors @ self.normal - self.tr
 
     def find_intersection(self, directions, translation):
         directions = np.asarray(directions)
         translation = np.asarray(translation)
-        return translation[:, np.newaxis] - directions.T * self.distance_to_mirror_plane(translation) / np.dot(
-            self.normal, directions.T)
+        ndim = max(directions.ndim, translation.ndim)
+        if directions.ndim < ndim:
+            directions = np.expand_dims(directions, axis=tuple(np.arange(ndim - directions.ndim)))
+        elif translation.ndim < ndim:
+            translation = np.expand_dims(translation, axis=tuple(np.arange(ndim - translation.ndim)))
+        scalar = ((translation @ self.normal - self.tr) / (directions @ self.normal))
+        return translation - directions * scalar[..., np.newaxis]
 
     #    def find_intersection(self, line:Line):
     #        return self.find_intersection(line.directions, line.translations)
 
     def get_distmat(self, lines):
         mirror_3d_vertices = self.find_intersection(lines[0], lines[1])
-        return np.linalg.norm(mirror_3d_vertices[:, np.newaxis, :] - mirror_3d_vertices[:, :, np.newaxis], axis=0)
+        return np.linalg.norm(mirror_3d_vertices[np.newaxis, :, :] - mirror_3d_vertices[:, np.newaxis, :], axis=-1)
 
     def optimize_from_lines(self, lines, distances):
         distances = np.asarray(distances)
