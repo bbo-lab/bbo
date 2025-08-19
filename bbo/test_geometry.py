@@ -3,9 +3,11 @@ import unittest
 import numpy as np
 import numpy.testing as testing
 from scipy.spatial.transform import Rotation as R
+import logging
 
 import bbo.geometry as geometry
 
+logger = logging.getLogger(__name__)
 
 class TestRotations(unittest.TestCase):
     def test_rotation_insert(self):
@@ -217,14 +219,16 @@ class TestAngleBetween(unittest.TestCase):
 
     def test_simple_vectors(self):
         """Stable and arccos versions should agree on well-conditioned vectors."""
-        u = np.array([1.0, 0.0, 0.0])
-        v = np.array([0.0, 1.0, 0.0])
-        theta_stable = geometry.angle_between(u, v)
-        theta_arccos = self.angle_between_arccos(u, v)
-        self.assertTrue(
-            np.allclose(theta_stable, theta_arccos, rtol=1e-12),
-            "Stable and arccos version differ too much on simple case",
-        )
+        rnd = np.random.default_rng(1)
+        for i in range(10):
+            u = np.array(rnd.normal(size=3), dtype=np.float32)
+            v = np.array(rnd.normal(size=3), dtype=np.float32)
+            theta_stable = geometry.angle_between(u, v)
+            theta_arccos = self.angle_between_arccos(u, v)
+            self.assertTrue(
+                np.allclose(theta_stable, theta_arccos, atol=1e-7),
+                "Stable and arccos version differ too much on simple case",
+            )
 
     def test_nearly_parallel_vectors(self):
         """Stable version should be closer to arctan2 than arccos for near-parallel vectors."""
@@ -239,6 +243,8 @@ class TestAngleBetween(unittest.TestCase):
         num = np.linalg.norm(u - v) * np.linalg.norm(u + v)
         den = 2 * np.dot(u, v)
         theta_ref = np.arctan2(num, den)
+        logger.log(logging.DEBUG, f"u: {u}, v: {v}, theta_stable: {theta_stable}, "
+                   f"theta_arccos: {theta_arccos}, theta_ref: {theta_ref}")
         err_stable = abs(theta_stable - theta_ref)
         err_arccos = abs(theta_arccos - theta_ref)
 

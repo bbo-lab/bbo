@@ -59,15 +59,12 @@ def from_rotvec_rot(rotvecs):
     return res
 
 
-def angle_between(u, v, axis=-1):
+def angle_between(u, v, axis=-1, normalize=True):
     """
     Return the angle(s) between two n-dimensional vectors in radians.
 
     Uses a numerically stable arctan2 formulation:
         θ = arctan2(‖u - v‖ · ‖u + v‖, 2 · (u·v))
-
-    This avoids the instabilities of both arccos and the
-    sqrt(||u||²||v||² - (u·v)²) formulation.
 
     Parameters
     ----------
@@ -82,11 +79,16 @@ def angle_between(u, v, axis=-1):
     -------
     angles : ndarray or float
         Angle(s) in radians between `u` and `v`, in [0, π].
+        :param normalize: If True, normalize the input vectors before calculating the angle.
     """
     u = np.asarray(u)
     v = np.asarray(v)
+    if normalize:
+        u = u / np.linalg.norm(u, axis=axis, keepdims=True)
+        v = v / np.linalg.norm(v, axis=axis, keepdims=True)
 
     dot = np.sum(u * v, axis=axis)
+    #Stable way to compute sqrt(||u||²||v||² - (u·v)²)
     num = np.linalg.norm(u - v, axis=axis) * np.linalg.norm(u + v, axis=axis)
     return np.arctan2(num, 2 * dot)
 
