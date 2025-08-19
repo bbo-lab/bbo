@@ -63,8 +63,11 @@ def angle_between(u, v, axis=-1):
     """
     Return the angle(s) between two n-dimensional vectors in radians.
 
-    Uses arctan2(sinθ, cosθ) = arctan2(sqrt(||u||²||v||² - (u·v)²), u·v),
-    which is numerically stable and works for any dimension.
+    Uses a numerically stable arctan2 formulation:
+        θ = arctan2(‖u - v‖ · ‖u + v‖, 2 · (u·v))
+
+    This avoids the instabilities of both arccos and the
+    sqrt(||u||²||v||² - (u·v)²) formulation.
 
     Parameters
     ----------
@@ -73,23 +76,19 @@ def angle_between(u, v, axis=-1):
     v : array_like
         Second input vector(s). Must be broadcast-compatible with `u`.
     axis : int, optional
-        The axis along which the vector components are stored.
-        Default is -1 (last axis).
+        Axis along which the vector components are stored (default -1).
 
     Returns
     -------
     angles : ndarray or float
-        The angle(s) in radians between `u` and `v`, in [0, π].
+        Angle(s) in radians between `u` and `v`, in [0, π].
     """
     u = np.asarray(u)
     v = np.asarray(v)
 
     dot = np.sum(u * v, axis=axis)
-    uu = np.sum(u * u, axis=axis)
-    vv = np.sum(v * v, axis=axis)
-    cross_like = np.sqrt(np.clip(uu * vv - dot * dot, 0, None))
-
-    return np.arctan2(cross_like, dot)
+    num = np.linalg.norm(u - v, axis=axis) * np.linalg.norm(u + v, axis=axis)
+    return np.arctan2(num, 2 * dot)
 
 
 def smoothrot(r, kernel=(1, 2, 1)):

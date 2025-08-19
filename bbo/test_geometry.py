@@ -101,11 +101,21 @@ class TestAffineTransformation(unittest.TestCase):
         np.testing.assert_allclose(af.apply(randvec), af.as_matrix(shape=(3, 4)) @ np.append(randvec, 1))
 
 
+    def test_scaling(self):
+        rng = np.random.default_rng(1)
+        af = geometry.AffineTransformation(rng.normal(size=(4, 4)))
+        vi = np.eye(3)
+        v0 = af.apply(np.zeros(3))
+        matscaling = af.get_scaling()
+        vecscaling = [np.linalg.norm(af.apply(vi[i]) - v0) for i in range(3)]
+        np.testing.assert_allclose(matscaling, vecscaling)
+
     def test_constructor(self):
         rng = np.random.default_rng(1)
         r = R.random()
         randvec = rng.normal(size=3)
         np.testing.assert_allclose(geometry.AffineTransformation(r).apply(randvec), r.apply(randvec))
+        np.testing.assert_allclose(geometry.AffineTransformation(r.as_matrix()).apply(randvec), r.apply(randvec))
 
 
 class TestGeometryObjects(unittest.TestCase):
@@ -190,6 +200,52 @@ class TestGeometryObjects(unittest.TestCase):
                                           translation=gen.normal(loc=0.0, scale=3.0, size=3))
             testvec = gen.normal(loc=0.0, scale=3.0, size=3)
             testing.assert_allclose(tr0.apply(tr0.inv().apply(testvec)), testvec)
+
+
+class TestAngleBetween(unittest.TestCase):
+    @staticmethod
+    def angle_between_arccos(u, v, axis=-1):
+        """Naive arccos-based angle function (less stable)."""
+        u = np.asarray(u)
+        v = np.asarray(v)
+        dot = np.sum(u * v, axis=axis)
+        uu = np.linalg.norm(u, axis=axis)
+        vv = np.linalg.norm(v, axis=axis)
+        cos_theta = dot / (uu * vv)
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+        return np.arccos(cos_theta)
+
+    def test_simple_vectors(self):
+        """Stable and arccos versions should agree on well-conditioned vectors."""
+        u = np.array([1.0, 0.0, 0.0])
+        v = np.array([0.0, 1.0, 0.0])
+        theta_stable = geometry.angle_between(u, v)
+        theta_arccos = self.angle_between_arccos(u, v)
+        self.assertTrue(
+            np.allclose(theta_stable, theta_arccos, rtol=1e-12),
+            "Stable and arccos version differ too much on simple case",
+        )
+
+    def test_nearly_parallel_vectors(self):
+        """Stable version should be closer to arctan2 than arccos for near-parallel vectors."""
+        u = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        v = np.array([1.0, 1e-4, 0.0], dtype=np.float32)
+
+        # stable computation
+        theta_stable = geometry.angle_between(u, v)
+        # naive arccos
+        theta_arccos = self.angle_between_arccos(u, v)
+        # direct arctan2 reference from entries
+        num = np.linalg.norm(u - v) * np.linalg.norm(u + v)
+        den = 2 * np.dot(u, v)
+        theta_ref = np.arctan2(num, den)
+        err_stable = abs(theta_stable - theta_ref)
+        err_arccos = abs(theta_arccos - theta_ref)
+
+        self.assertLess(
+            err_stable, err_arccos,
+            "Stable version should be closer to arctan2 reference than arccos"
+        )
 
 
 class TestSimpleFunctions(unittest.TestCase):
