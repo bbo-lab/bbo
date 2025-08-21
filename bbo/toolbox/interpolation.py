@@ -42,11 +42,15 @@ def align_by_logistic(traces_y, traces_t, align_range = (-np.inf, np.inf), retur
     timeoffsets = []
     logistics = []
     for y, t in zip(traces_y, traces_t):
-        mask = (align_range[0] <= t) & (t <= align_range[1])
+        mask = (align_range[0] <= t) & (t <= align_range[1]) & ~np.isnan(y)
 
-        k0 = 10 / np.diff(y[(0, -1),])[0]
-        p0 = [max(y), np.median(t), k0, min(y)]
-        popt, pcov = curve_fit(logistic, t[mask], y[mask], p0, method='dogbox')
+        k0 = (y[-1]-y[0])/(t[-1]-t[0]) / (max(y)-min(y))
+        p0 = [max(y)-min(y), np.median(t), k0, min(y)]
+        try:
+            popt, pcov = curve_fit(logistic, t[mask], y[mask], p0, method='dogbox')
+        except RuntimeError:
+            popt = np.array([np.nan, np.nan, np.nan, np.nan])
+
         timeoffsets.append(popt[1])
         if return_fits:
             logistics.append(logistic(t, *popt))
