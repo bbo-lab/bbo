@@ -168,7 +168,7 @@ def rotation_gradient(rot):
 
 
 def mean_rot(r, weights=None, ignore_nan=True):
-    mask = np.logical_not(isnan_rot(r))
+    mask = ~isnan_rot(r)
     if np.any(mask) if ignore_nan else np.all(mask):
         return r[mask].mean(weights=None if weights is None else np.asarray(weights)[mask])
     return Rotation.from_rotvec(np.full(fill_value=np.nan, shape=3))
@@ -205,6 +205,7 @@ def apply_rot(r, vec):
     if mask:
         return r.apply(vec)
     return np.full(shape=vec.shape, fill_value=np.nan)
+
 
 
 def divlim(divident, divisor):
@@ -538,20 +539,65 @@ class RigidTransform:
             translation_interpolation = [
                 scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False,
                                            fill_value=(fill_value[0,i], fill_value[1,i])) for i, traj in enumerate(np.moveaxis(self.translation, -1, 0))]
-        else:
+        elif fill_boundary == "nan":
             translation_interpolation = [
                 scipy.interpolate.interp1d(times, traj, kind=interpolation_method, bounds_error=False,
                                            fill_value=fill_boundary) for traj in np.moveaxis(self.translation, -1, 0)]
-
+        else:
+            raise Exception(f"Boundary {fill_boundary} not known")
 
         return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
 
-    def mean(self):
-        return RigidTransform(rotation=self.rotation.mean(), translation=np.average(self.translation, axis=0))
+    def mean(self, weights):
+        return RigidTransform(rotation=mean_rot(self.rotation, weights=weights), translation=np.average(self.translation, axis=0, weights=weights))
 
     def nanmean(self, keepdims=False):
         valid = np.logical_not(self.isnan())
         return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid])
+
+
+def interp_nd(x, xp, fp, **kwargs):
+    """
+    Multidimensional wrapper for np.interp.
+
+
+    Parameters
+    ----------
+    x : (...,) array_like
+    The x-coordinates at which to evaluate the interpolated values.
+    xp : (M,) array_like
+    The x-coordinates of the data points, must be increasing.
+    fp : (M, *shape) array_like
+    The y-coordinates of the data points, same length as xp,
+    followed by arbitrary trailing dimensions.
+    **kwargs : dict, optional
+    Additional keyword arguments passed to np.interp (e.g., left, right, period).
+
+
+    Returns
+    -------
+    out : (..., *shape) ndarray
+    Interpolated values, with `x` broadcast to leading dimension(s)
+    and trailing dimensions from `fp`.
+    """
+    x = np.asarray(x)
+    xp = np.asarray(xp)
+    fp = np.asarray(fp)
+
+    if xp.ndim != 1:
+        raise ValueError(f"xp must be 1D and not {xp.ndim}D")
+    if fp.shape[0] != xp.shape[0]:
+        raise ValueError(f"First dimension of fp {fp.shape[0]} must match xp {xp.shape[0]}")
+
+    orig_shape = fp.shape[1:]
+    fp_flat = fp.reshape(fp.shape[0], -1)
+
+    out = np.stack([
+        np.interp(x, xp, fp_flat[:, j], **kwargs)
+        for j in range(fp_flat.shape[1])
+    ], axis=-1)
+
+    return out.reshape(x.shape + orig_shape)
 
 
 def get_nan_rot(size=None):
@@ -739,6 +785,14 @@ class Line:
     def __setitem__(self, index, value):
         self.position[index] = value.position
         self.direction[index] = value.direction
+
+    def get_projection_t(self, position):
+        position = np.asarray(position) - self.position
+        return np.sum(position * self.direction, axis=-1) / np.sum(self.direction * self.direction, axis=-1)
+
+    def project(self, position):
+        t = self.get_projection_t(position)
+        return self.position + t[..., np.newaxis] * self.direction
 
     def is_single(self):
         return self.position.ndim == 1
