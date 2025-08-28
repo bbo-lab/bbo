@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from bbo import geometry
 from scipy.interpolate import interp1d
@@ -40,42 +42,47 @@ def align_by_logistic(traces_y, traces_t, align_range = (-np.inf, np.inf), retur
         return (ydata)
 
     timeoffsets = []
+    yoffsets = []
     logistics = []
+    params = []
     for y, t in zip(traces_y, traces_t):
         mask = (align_range[0] <= t) & (t <= align_range[1]) & ~np.isnan(y)
 
-        k0 = (y[-1]-y[0])/(t[-1]-t[0]) / (max(y)-min(y))
-        p0 = [max(y)-min(y), np.median(t), k0, min(y)]
+        k0 = (y[~np.isnan(y)][-1]-y[~np.isnan(y)][0])/(t[-1]-t[0]) / (np.nanmax(y)-np.nanmin(y))
+        p0 = [np.nanmax(y)-np.nanmin(y), np.median(t), k0, np.nanmin(y)]
         try:
             popt, pcov = curve_fit(logistic, t[mask], y[mask], p0, method='dogbox')
         except RuntimeError:
             popt = np.array([np.nan, np.nan, np.nan, np.nan])
 
         timeoffsets.append(popt[1])
+        yoffsets.append(popt[3]+popt[0]/2)
+        params.append(popt)
         if return_fits:
             logistics.append(logistic(t, *popt))
 
     if return_fits:
-        return np.array(timeoffsets), logistics
+        return np.array(timeoffsets), np.array(yoffsets), params, logistics
     else:
-        return np.array(timeoffsets)
+        return np.array(timeoffsets), np.array(yoffsets)
 
 
-def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, value_offsets=None, timewindow=0.1, sigma=0.0, method="interpolate", only_valid=True):
+def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, value_offsets=None,
+                       timewindow=(-np.inf, np.inf), sigma=0.0, method="interpolate", only_valid=True):
     if value_offsets is None:
         value_offsets = np.zeros(shape=len(traces_y))
     if timeoffsets is None:
         timeoffsets = np.zeros(shape=len(traces_y))
     match method:
         case "direct":
-            all_times = []
-            all_data = []
-            for d, t, t0, v0 in zip(traces_y, traces_t, timeoffsets, value_offsets):
-                begin = np.searchsorted(t, t0 - timewindow)
-                end = np.searchsorted(t, t0 + timewindow)
-                all_times.append(t[begin:end] - t0)
-                all_data.append(d[begin:end] - v0)
-            all_times = np.concatenate(all_times)
+            if all_times is None:
+                all_times = []
+                all_data = []
+                for d, t, t0, v0 in zip(traces_y, traces_t, timeoffsets, value_offsets):
+                    mask = (t >= t0 + timewindow[0]) & (t <= t0 + timewindow[-1])
+                    all_times.append(t[mask] - t0)
+                    all_data.append(d[mask] - v0)
+                all_times = np.concatenate(all_times)
             all_data = np.concatenate(all_data)
             sortindices = np.argsort(all_times)
             sortindices = sortindices[~np.isnan(all_data[sortindices])]
@@ -85,12 +92,12 @@ def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, val
             select_times = np.unique(all_times, return_index=True)[1]
             return all_data[select_times], all_times[select_times], None
         case "interpolate":
-            all_times = []
-            for d, t, t0, v0 in zip(traces_y, traces_t, timeoffsets, value_offsets):
-                begin = np.searchsorted(t, t0 - timewindow)
-                end = np.searchsorted(t, t0 + timewindow)
-                all_times.append(t[begin:end] - t0)
-            all_times = np.unique(np.concatenate(all_times))
+            if all_times is None:
+                all_times = []
+                for d, t, t0, v0 in zip(traces_y, traces_t, timeoffsets, value_offsets):
+                    mask = (t >= t0 + timewindow[0]) & (t <= t0 + timewindow[-1])
+                    all_times.append(t[mask] - t0)
+                all_times = np.unique(np.concatenate(all_times))
             average = []
             for d, t, t0, v0 in zip(traces_y, traces_t, timeoffsets, value_offsets):
                 if only_valid:
@@ -99,10 +106,10 @@ def get_average_signal(traces_y, traces_t, all_times=None, timeoffsets=None, val
                     d = d[valid]
                 average.append(interp1d(t - t0, d - v0, bounds_error=False, fill_value=np.nan)(all_times))
             average = np.asarray(average)
-            variance = np.nanvar(average, axis=0)
+            std = np.nanstd(average, axis=0)
             average = np.nanmean(average, axis=0)
             average = geometry.smooth(average, all_times, sigma=sigma, num_neighbors=50)
-            return average, variance, all_times
+            return average, std, all_times
         case _: raise NotImplementedError(f"Method {method} not implemented")
 
 
