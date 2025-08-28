@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from abc import abstractmethod
 import scipy.spatial.transform
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
@@ -195,16 +196,19 @@ def multiply_rot(lhs, rhs):
 
 
 def apply_rot(r, vec):
-    mask = ~isnan_rot(r)
-    if isinstance(mask, np.ndarray):
-        res = np.full(shape=(len(mask), 3), fill_value=np.nan)
-        if len(vec.shape) == 2:
-            vec = vec[mask]
-        res[mask] = r[mask].apply(vec)
-        return res
-    if mask:
-        return r.apply(vec)
-    return np.full(shape=vec.shape, fill_value=np.nan)
+    return vec @ np.swapaxes(r.as_matrix(), -1, -2)
+    #mask = ~isnan_rot(r)
+    #shape = vec.shape
+    #if isinstance(mask, np.ndarray):
+    #    res = np.full(shape=(len(mask), 3), fill_value=np.nan)
+    #    if vec.ndim >= 2:
+    #        vec = vec[...,mask,:]
+    #    res[...,mask,:] = r[mask].apply(vec)
+    #    return res
+    #if mask: # Single rotation
+    #    return r.apply(vec.reshape(-1,3)).reshape(*shape)
+    #assert mask == False
+    #return np.full(shape=vec.shape, fill_value=np.nan)
 
 
 
@@ -357,7 +361,13 @@ def flip_quaternions(rot):
     return rot * flips[:, np.newaxis]
 
 
-class RigidTransform:
+class GeometricTransformation:
+    @abstractmethod
+    def apply(self, vec, only_linear=False):
+        pass
+
+
+class RigidTransform(GeometricTransformation):
     def __init__(self, rotation: Rotation|np.ndarray = Rotation.identity(), translation=None, rotation_type=None):
         if translation is None:
             translation = np.zeros(shape=(1, 3))
@@ -403,16 +413,15 @@ class RigidTransform:
         np.testing.assert_allclose(matrix[..., 3, 0:4], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
 
-    def apply(self, vec):
-        vec_shape = vec.shape
-        if len(vec_shape) > 2:
-            vec = vec.reshape((-1, vec_shape[-1]))
+    def apply(self, vec, only_linear=False):
+        if isinstance(vec, Line):
+            return Line(position=self.apply(vec.position), direction=self.apply(vec.direction, only_linear=True))
 
-        new_vec = self.rotation.apply(vec) + self.translation
+        vec = apply_rot(self.rotation, vec)
+        if not only_linear:
+            vec += self.translation
 
-        if len(vec_shape) > 2:
-            new_vec = new_vec.reshape(vec_shape)
-        return new_vec
+        return vec
 
     def apply_broadcast(self, vec):
         # Return a [shape transforms] x [shape vecs] array of vectors
@@ -426,16 +435,7 @@ class RigidTransform:
         return new_vec
 
     def rotate(self, vec):
-        vec_shape = vec.shape
-        if len(vec_shape) > 2:
-            vec = vec.reshape((-1, vec_shape[-1]))
-
-        new_vec = self.rotation.apply(vec)
-
-        if len(vec_shape) > 2:
-            new_vec = new_vec.reshape(vec_shape)
-        return new_vec
-
+        return self.apply(vec, only_linear=True)
 
     def rotate_broadcast(self, vec):
         rot_mats = self.rotation.as_matrix()
@@ -447,16 +447,7 @@ class RigidTransform:
         return new_vec
 
     def apply_on_vector(self, vec):
-        vec_shape = vec.shape
-        if len(vec_shape) > 2:
-            vec = vec.reshape((-1, vec_shape[-1]))
-
-        vec = self.rotation.apply(vec)
-
-        if len(vec_shape) > 2:
-            vec = vec.reshape(vec_shape)
-
-        return vec
+        return self.apply(vec, only_linear=True)
 
     def __getitem__(self, key):
         return RigidTransform(rotation=self.rotation[key], translation=self.translation[key])
@@ -649,7 +640,7 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
     nan_mask = np.zeros(len(rots)+2, dtype=bool)
     nan_mask[1:-1] = isnan_rot(rots)
 
-    def funct(interptimes):
+    def funct(interptimes):#TODO allow single numbers
         interptimes = np.copy(interptimes)
         low = interptimes < tmin
         high = interptimes > tmax
@@ -771,7 +762,7 @@ class Line:
         return intersect(self.position, self.direction)
 
     def get_endpoints(self):
-        return np.stack((self.position, self.position + self.direction), axis=-2)
+        return np.asarray((self.position, self.position + self.direction))
 
     def __repr__(self):
         return f"{self.position} + t * {self.direction}"
@@ -785,6 +776,15 @@ class Line:
     def __setitem__(self, index, value):
         self.position[index] = value.position
         self.direction[index] = value.direction
+
+    def reshape(self, *newshape):
+        return Line(position=self.position.reshape(*newshape), direction=self.direction.reshape(*newshape))
+
+    @staticmethod
+    def concatenate(lines: list|tuple|np.ndarray, axis=0):
+        return Line(position=np.concatenate([l.position for l in lines], axis=axis),
+                    direction=np.concatenate([l.direction for l in lines], axis=axis))
+
 
     def get_projection_t(self, position):
         position = np.asarray(position) - self.position
@@ -807,6 +807,9 @@ class Line:
         if isinstance(other, Line):
             return np.array_equal(self.position, other.position) and np.array_equal(self.direction, other.direction)
         return False
+
+    def isnan(self):
+        return np.logical_or(np.any(np.isnan(self.position), axis=-1), np.any(np.isnan(self.direction), axis=-1))
 
     def calc_min_point_dist(self, x, outer=False) -> np.ndarray or float:
         """Return the minimum distances of points from line(s)
@@ -900,7 +903,7 @@ class LinearTransformation:
         return LinearTransformation(self.mat @ other.mat)
 
 
-class AffineTransformation:
+class AffineTransformation(GeometricTransformation):
     def __init__(self, mat):
         if isinstance(mat, Rotation):
             self.mat = np.eye(4, dtype=float)
