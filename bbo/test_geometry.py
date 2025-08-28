@@ -87,6 +87,35 @@ class TestCoordinateTransformations(unittest.TestCase):
             normal=rng.normal(size=3),
             p=rng.normal(size=3))
 
+
+class TestRigidTransformation(unittest.TestCase):
+    def test_linetransformation(self):
+        rng = np.random.default_rng(1)
+
+        trafo = geometry.RigidTransform(
+            translation=rng.normal(size=(5,3)),
+            rotation=R.from_rotvec(rng.normal(size=(5,3)))
+        )
+
+        pos = rng.normal(size=(7,3))
+        dir = rng.normal(size=(7,3))
+        dir /= np.linalg.norm(dir, axis=1, keepdims=True)
+        line = geometry.Line(direction=dir[:,np.newaxis],
+                             position=pos[:,np.newaxis])
+
+        tline = trafo.apply(line)
+        print(tline.position.shape)
+        for i, (p, d) in enumerate(zip(pos, dir)):
+            np.testing.assert_allclose(
+                tline.direction[i],
+                trafo.rotation.apply(d)
+            )
+            np.testing.assert_allclose(
+                tline.position[i],
+                trafo.rotation.apply(p) + trafo.translation
+            )
+
+
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
         rng = np.random.default_rng(1)
