@@ -196,7 +196,8 @@ def multiply_rot(lhs, rhs):
 
 
 def apply_rot(r, vec):
-    return vec @ np.swapaxes(r.as_matrix(), -1, -2)
+    return np.einsum('...ij,...j->...i', r.as_matrix(), vec)
+    #return vec @ np.swapaxes(r.as_matrix(), -1, -2)
     #mask = ~isnan_rot(r)
     #shape = vec.shape
     #if isinstance(mask, np.ndarray):
