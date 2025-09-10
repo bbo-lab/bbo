@@ -17,6 +17,14 @@ class TestRotations(unittest.TestCase):
         np.testing.assert_equal(np.insert(data, insertion_indices, insertion_data),
                                 geometry.rot_insert(data, insertion_indices, insertion_data))
 
+
+    def test_broadcasting(self):
+        v = np.zeros(shape=(7, 1, 3))
+        r = R.from_euler('xyz', np.zeros(shape=(5, 3)))
+        result = geometry.apply_rot(r, v)
+        assert result.shape == (7, 5, 3)
+
+
 class TestSimpleFunctions(unittest.TestCase):
     @staticmethod
     def run_on_vectors(v0, v1):
@@ -119,10 +127,9 @@ class TestRigidTransformation(unittest.TestCase):
 class TestAffineTransformation(unittest.TestCase):
     def test_concatenation(self):
         rng = np.random.default_rng(1)
-        af0 = geometry.AffineTransformation(rng.normal(size=(4,4)))
-        af1 = geometry.AffineTransformation(rng.normal(size=(4,4)))
+        af = [geometry.AffineTransformation(rng.normal(size=(4,4))) for _ in range(2)]
         randvec = rng.normal(size=3)
-        np.testing.assert_allclose((af1 * af0).apply(randvec), af1.apply(af0.apply(randvec)))
+        np.testing.assert_allclose((af[1] * af[0]).apply(randvec), af[1].apply(af[0].apply(randvec)))
 
 
     def test_apply(self):
@@ -153,14 +160,13 @@ class TestGeometryObjects(unittest.TestCase):
     def test_reflection(self):
         gen = np.random.default_rng(1)
         for i in range(10):
-            reflection_0 = geometry.Reflection(normal=gen.normal(loc=0.0, scale=3.0, size=3))
-            reflection_1 = geometry.Reflection(normal=gen.normal(loc=0.0, scale=3.0, size=3))
+            reflection = [geometry.Reflection(normal=gen.normal(loc=0.0, scale=3.0, size=3)) for _ in range(2)]
             testvec = gen.normal(loc=0.0, scale=3.0, size=3)
-            result = reflection_0.apply(reflection_1.apply(testvec))
-            chained = reflection_0 * reflection_1
-            testing.assert_allclose(reflection_0.as_matrix() @ testvec, reflection_0.apply(testvec), atol=0.00001)
+            result = reflection[0].apply(reflection[1].apply(testvec))
+            chained = reflection[0] * reflection[1]
+            testing.assert_allclose(reflection[0].as_matrix() @ testvec, reflection[0].apply(testvec), atol=0.00001)
             testing.assert_allclose(chained.apply(testvec), result, atol=0.00001)
-            testing.assert_allclose(reflection_0.as_matrix() @ reflection_1.as_matrix(), chained.as_matrix(),
+            testing.assert_allclose(reflection[0].as_matrix() @ reflection[1].as_matrix(), chained.as_matrix(),
                                     atol=0.00001)
         reflection_0 = geometry.Reflection(normal=(1, 0, 0))
         reflection_1 = geometry.Reflection(normal=(0, 1, 0))
@@ -217,12 +223,10 @@ class TestGeometryObjects(unittest.TestCase):
     def test_rigid_transform_concatenation(self):
         gen = np.random.default_rng(1)
         for i in range(10):
-            tr0 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
-                                          translation=gen.normal(loc=0.0, scale=3.0, size=3))
-            tr1 = geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
-                                          translation=gen.normal(loc=0.0, scale=3.0, size=3))
-            testvec = gen.normal(loc=0.0, scale=3.0, size=3)
-            testing.assert_allclose((tr0 * tr1).apply(testvec), tr0.apply(tr1.apply(testvec)))
+            tr = [geometry.RigidTransform(rotation=R.from_rotvec(gen.normal(loc=0.0, scale=3.0, size=3)),
+                                          translation=gen.normal(loc=0.0, scale=3.0, size=3)) for _ in range(2)]
+            test_vector = gen.normal(loc=0.0, scale=3.0, size=3)
+            testing.assert_allclose((tr[0] * tr[1]).apply(test_vector), tr[0].apply(tr[1].apply(test_vector)))
 
     def test_rigid_transform_inverse(self):
         gen = np.random.default_rng(1)
