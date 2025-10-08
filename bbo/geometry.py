@@ -412,7 +412,12 @@ class Line:
         self.direction[index] = value.direction
 
     def reshape(self, *newshape):
-        return Line(position=self.position.reshape(*newshape), direction=self.direction.reshape(*newshape))
+        return Line(position=np.ascontiguousarray(self.position.reshape(*newshape)),
+                    direction=np.ascontiguousarray(self.direction.reshape(*newshape)))
+
+    def transpose(self, axes=None):
+        return Line(position=np.ascontiguousarray(self.position.transpose(axes)),
+                    direction=np.ascontiguousarray(self.direction.transpose(axes)))
 
     @staticmethod
     def concatenate(lines: list|tuple|np.ndarray, axis=0):
@@ -701,12 +706,12 @@ class RigidTransform(GeometricTransformation):
 
         return lambda interptimes: RigidTransform(rotation=rotation_interpolation(interptimes), translation=np.stack([ti(interptimes) for ti in translation_interpolation], axis=-1))
 
-    def mean(self, weights):
+    def mean(self, weights=None):
         return RigidTransform(rotation=mean_rot(self.rotation, weights=weights), translation=np.average(self.translation, axis=0, weights=weights))
 
-    def nanmean(self, keepdims=False):
+    def nanmean(self, keepdims=False, weights=None):
         valid = np.logical_not(self.isnan())
-        return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid])
+        return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid]).mean(weights=weights)
 
     def __repr__(self):
         return f"RigidTransform(rotation={self.rotation.as_quat()}, translation={self.translation})"
