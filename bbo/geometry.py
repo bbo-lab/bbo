@@ -10,6 +10,26 @@ from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 from scipy.spatial.transform import RotationSpline
 
+
+def best_fit_plane(points, axis=-1, tol=None, return_class="tuple"):
+    points = np.asarray(points, dtype=float)
+    pts = np.moveaxis(points, axis, -1)
+    flat = pts.reshape(-1, pts.shape[-1])
+    centroid = flat.mean(axis=0)
+    centered = flat - centroid
+    _, s, vh = np.linalg.svd(centered, full_matrices=False)
+
+    if tol is not None and s[-1] < tol:
+        raise ValueError("Points appear to be collinear.")
+
+    normal = vh[-1] / np.linalg.norm(vh[-1])
+
+    match return_class:
+        case "tuple": return centroid, normal
+        case "mirror": return Mirror(normal=normal, point_on_mirror=centroid)
+        case _: raise Exception(f"Unknown return_class {return_class}")
+
+
 def get_mirror_matrix(normal):
     normal = np.asarray(normal)
     H = np.eye(len(normal)) - 2 * np.outer(normal, normal.T) / np.linalg.norm(normal) ** 2
@@ -63,7 +83,7 @@ def from_rotvec_rot(rotvecs):
     return res
 
 
-def angle_between(u, v, axis=-1, normalize=True):
+def angle_between(u, v, axis=-1, keepdims=False, normalize:bool=True, xp=np):
     """
     Return the angle(s) between two n-dimensional vectors in radians.
 
@@ -85,16 +105,16 @@ def angle_between(u, v, axis=-1, normalize=True):
         Angle(s) in radians between `u` and `v`, in [0, π].
         :param normalize: If True, normalize the input vectors before calculating the angle.
     """
-    u = np.asarray(u)
-    v = np.asarray(v)
+    u = xp.asarray(u)
+    v = xp.asarray(v)
     if normalize:
-        u = u / np.linalg.norm(u, axis=axis, keepdims=True)
-        v = v / np.linalg.norm(v, axis=axis, keepdims=True)
+        u = u / xp.linalg.norm(u, axis=axis, keepdims=True)
+        v = v / xp.linalg.norm(v, axis=axis, keepdims=True)
 
-    dot = np.sum(u * v, axis=axis)
+    dot = xp.sum(u * v, axis=axis, keepdims=keepdims)
     #Stable way to compute sqrt(||u||²||v||² - (u·v)²)
-    num = np.linalg.norm(u - v, axis=axis) * np.linalg.norm(u + v, axis=axis)
-    return np.arctan2(num, 2 * dot)
+    num = xp.linalg.norm(u - v, axis=axis, keepdims=keepdims) * xp.linalg.norm(u + v, axis=axis, keepdims=keepdims)
+    return xp.arctan2(num, 2 * dot)
 
 
 def smoothrot(r, kernel=(1, 2, 1)):
@@ -384,7 +404,7 @@ class Line:
         self.position = np.asarray(position, dtype=dtype)
         self.direction = np.asarray(direction, dtype=dtype)
         if not np.array_equal(self.position.shape, self.direction.shape):
-            raise Exception("Shapes have to be equal")
+            raise Exception(f"Shapes have to be equal for position and direction, got {self.position.shape} and {self.direction.shape}")
         self.shape = self.position.shape
         self.dtype = dtype
 
@@ -459,6 +479,9 @@ class Line:
         """
         return point_line_distance(self.position, self.direction / np.linalg.norm(self.direction, axis=-1, keepdims=True), x, outer=outer)
 
+    def distance_to_point(self, x, outer=False) -> np.ndarray or float:
+        return self.calc_min_point_dist(x, outer=outer)
+
     def normalize(self):
         self.direction /= np.linalg.norm(self.direction, axis=-1, keepdims=True)
 
@@ -492,6 +515,22 @@ class GeometricTransformation:
     def get_unit_volume(self):
         pass
 
+    @abstractmethod
+    def get_scaling(self):
+        pass
+
+    @staticmethod
+    def from_dict(data:dict):
+        datatype = data["type"]
+        match datatype:
+            case "AffineTransformation":
+                return AffineTransformation.from_dict(data)
+            case "RigidTransform":
+                return RigidTransform.from_dict(data)
+            case _:
+                raise ValueError(f"Cannot parse GeometricTransformation from type {datatype}")
+
+
 class IdentityTransformation(GeometricTransformation):
     def __init__(self, dim):
         self.dim = dim
@@ -506,6 +545,9 @@ class IdentityTransformation(GeometricTransformation):
         return self
 
     def get_unit_volume(self):
+        return 1
+
+    def get_scaling(self):
         return 1
 
 class RigidTransform(GeometricTransformation):
@@ -572,6 +614,21 @@ class RigidTransform(GeometricTransformation):
     def from_matrix(matrix):
         np.testing.assert_allclose(matrix[..., 3, 0:4], np.asarray([0, 0, 0, 1]))
         return RigidTransform(rotation=Rotation.from_matrix(matrix[..., 0:3, 0:3]), translation=matrix[..., 0:3, 3])
+
+    @staticmethod
+    def from_dict(data:dict):
+        if data["type"] != "RigidTransform":
+            raise ValueError(f"Cannot parse RigidTransform from type {data['type']}")
+        rotation = np.asarray(data["rotation"])
+        translation = np.asarray(data["translation"])
+        return RigidTransform(rotation=Rotation.from_quat(rotation), translation=translation)
+
+    def to_dict(self):
+        return {
+            "type": "RigidTransform",
+            "rotation": self.rotation.as_quat().tolist(),
+            "translation": self.translation.tolist()
+        }
 
     def apply(self, vec, only_linear=False):
         if isinstance(vec, Line):
@@ -1020,8 +1077,11 @@ class AffineTransformation(GeometricTransformation):
         return AffineTransformation(mat)
 
     @staticmethod
-    def identity():
-        return AffineTransformation(np.eye(4, dtype=float))
+    def identity(shape=None):
+        result = AffineTransformation(np.eye(4, dtype=float))
+        if shape is not None:
+            result.mat = np.tile(result.mat, (*shape, 1, 1))
+        return result
 
     def to_dict(self):
         return {
@@ -1032,8 +1092,8 @@ class AffineTransformation(GeometricTransformation):
     @staticmethod
     def from_dict(data):
         if data["type"] != "AffineTransformation":
-            raise ValueError("Invalid type for AffineTransformation")
-        return AffineTransformation(data["mat"])
+            raise ValueError(f"Invalid type for AffineTransformation: {data['type']}")
+        return AffineTransformation(np.asarray(data["mat"]))
 
     def get_scaling(self, keepdims=False):
         return np.linalg.norm(self.mat[...,0:3, 0:3], axis=-2, keepdims=keepdims)
@@ -1041,7 +1101,9 @@ class AffineTransformation(GeometricTransformation):
     def get_translation(self):
         return self.mat[..., 0:3, 3]
 
-    def translate(self, translation, inplace):
+    def translate(self, translation, inplace, pre_multiply=False):
+        if pre_multiply:
+            return self.translate(self.apply(translation, only_linear=True), inplace=inplace)
         if inplace:
             self.mat[..., :3, 3] += translation
             return self
@@ -1063,6 +1125,8 @@ class AffineTransformation(GeometricTransformation):
         return AffineTransformation(np.linalg.inv(self.mat))
 
     def apply(self, points, only_linear=False):
+        if isinstance(points, Line):
+            return Line(position=self.apply(points.position), direction=self.apply(points.direction, only_linear=True))
         if only_linear:
             return points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)
         return (points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)) + self.mat[...,0:3, 3]
@@ -1219,6 +1283,17 @@ class Mirror(GeometricTransformation):
 
     def as_matrix(self, shape=None):
         return np.copy(self.HomTr)
+
+    def flip(self):
+        return Mirror(normal=-self.normal, tr=-self.tr)
+
+    def project_to_plane(self, points):
+        points = np.asarray(points)
+
+        dist = points @ self.normal - self.tr
+
+        return points - dist[..., np.newaxis] * self.normal
+
 
     def rotate(self, rot):
         """
