@@ -79,6 +79,12 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
     if do_purge_nans:
         purge_nans(labels)
 
+    # Fix data where point_times are missing due to prior bug
+    for labels_marker in labels["labels"].values():
+        for label in labels_marker.values():
+            if len(label["point_times"]) == 0:
+                label["point_times"] = np.zeros_like(label["coords"][:, 0])
+
     labels["version"] = version
     return labels
 
@@ -395,6 +401,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                 transfer_mask &= source_entry.get("action", default_action) == index_create
                 # Target time is older. We do <= to be able to do in place corrections in the merged files.
                 transfer_mask &= target_entry["point_times"] <= source_entry["point_times"]
+
                 # Source is not nan
                 if not nan_deletes:
                     transfer_mask &= np.all(~np.isnan(source_entry["coords"]), axis=-1)
