@@ -350,7 +350,14 @@ def spherical2cart(vec, cart="xyz", sph="ria", invertaxis="", center_inclination
     return np.stack([res["xyz".index(a)] for a in cart], axis=-1)
 
 
-def cart2spherical(vec, cart:str="xyz", sph:str="ria", invertaxis:str="", center_inclination:bool=False, degrees:bool=False, xp=np):
+def cart2spherical(
+        vec,
+        cart:str="xyz",
+        sph:str="ria",
+        invertaxis:str="",
+        center_inclination:bool=False,
+        degrees:bool=False,
+        xp=np):
     """
     Converts cartesian to spherical coordinates according to physical definition
     https://en.wikipedia.org/wiki/Spherical_coordinate_system#Coordinate_system_conversions.
@@ -432,12 +439,12 @@ class Line:
         self.direction[index] = value.direction
 
     def reshape(self, *newshape):
-        return Line(position=np.ascontiguousarray(self.position.reshape(*newshape)),
-                    direction=np.ascontiguousarray(self.direction.reshape(*newshape)))
+        return Line(position=self.position.reshape(*newshape),
+                    direction=self.direction.reshape(*newshape))
 
     def transpose(self, axes=None):
-        return Line(position=np.ascontiguousarray(self.position.transpose(axes)),
-                    direction=np.ascontiguousarray(self.direction.transpose(axes)))
+        return Line(position=self.position.transpose(axes),
+                    direction=self.direction.transpose(axes))
 
     @staticmethod
     def concatenate(lines: list|tuple|np.ndarray, axis=0):
@@ -1113,6 +1120,8 @@ class AffineTransformation(GeometricTransformation):
             return AffineTransformation(new_mat)
 
     def scale(self, scale: Union[numbers.Number, np.ndarray, list, tuple], inplace):
+        if isinstance(scale, np.ndarray) and scale.ndim == 1:
+            scale = scale[:, np.newaxis]
         if inplace:
             self.mat[..., :3, :] *= scale
             return self
@@ -1127,9 +1136,10 @@ class AffineTransformation(GeometricTransformation):
     def apply(self, points, only_linear=False):
         if isinstance(points, Line):
             return Line(position=self.apply(points.position), direction=self.apply(points.direction, only_linear=True))
+        result = points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)
         if only_linear:
-            return points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)
-        return (points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)) + self.mat[...,0:3, 3]
+            return result
+        return result + self.mat[...,0:3, 3]
 
     def apply_on_vector(self, vectors):
         return self.apply(vectors, only_linear=True)
