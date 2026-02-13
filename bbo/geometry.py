@@ -161,9 +161,12 @@ def nanmean_rot(r):
     return r[isnan_rot(r, inverted=True)].mean()
 
 def from_euler_rot(seq, angles, degrees=False):
-    res = get_nan_rot(len(angles))
+    assert angles.shape[-1]==len(seq),  "Scipy > 1.17 expects last dimension to match sequence"
+    if angles.ndim == 1:
+        angles = angles[np.newaxis]
+    res = get_nan_rot(len(angles))  # TODO: Support Scipy > 1.17 rotation shapes
     mask = ~np.isnan(angles)
-    if len(mask.shape) == 2:
+    if len(mask.shape) > 1:
         mask = np.all(mask, axis=-1)
     res[mask] = Rotation.from_euler(seq, angles[mask], degrees=degrees)
     return res
