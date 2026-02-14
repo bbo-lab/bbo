@@ -603,7 +603,7 @@ class RigidTransform(GeometricTransformation):
         return RigidTransform(rotation=r, translation=np.zeros(shape=(*shape,3)))
 
     @staticmethod
-    def align_points(a:np.ndarray|list|dict, b:np.ndarray|list|dict, weights=None) -> (RigidTransform, float):
+    def align_points(a:np.ndarray|list|dict, b:np.ndarray|list|dict, weights:None|np.ndarray|list|dict=None) -> (RigidTransform, float):
         """
         Aligns two sets of points a and b using the Kabsch algorithm.
         :param a:
@@ -613,7 +613,6 @@ class RigidTransform(GeometricTransformation):
         """
         if isinstance(a, dict) and isinstance(b, dict):
             common_keys = a.keys() & b.keys()
-            print(a,b, common_keys)
             a = np.asarray([a[k] for k in common_keys])
             b = np.asarray([b[k] for k in common_keys])
         amean, bmean = np.average(a, weights=weights, axis=0, keepdims=True), np.average(b, weights=weights, axis=0, keepdims=True)
@@ -643,7 +642,6 @@ class RigidTransform(GeometricTransformation):
     def apply(self, vec, only_linear=False):
         if isinstance(vec, Line):
             return Line(position=self.apply(vec.position), direction=self.apply(vec.direction, only_linear=True))
-
         vec = apply_rot(self.rotation, vec)
         if not only_linear:
             vec += self.translation
@@ -1198,15 +1196,14 @@ def align_points(a:dict|list|np.ndarray, b:dict|list|np.ndarray, weights=None, k
         bmean = np.average(b, weights=weights, axis=0, keepdims=True)
         a0 = a - amean
         b0 = b - bmean
-
-        rotation, rssd = Rotation.align_vectors(a0, b0, weights=weights)
+        bnorm = np.average(np.sum(b0 ** 2, axis=1), weights=weights)
+        prescale = np.sqrt(np.average(np.sum(a0 ** 2, axis=1), weights=weights) / bnorm)
+        rotation, rssd = Rotation.align_vectors(a0, b0 * prescale, weights=weights)
 
         b0r = rotation.apply(b0)
 
         num = np.average(np.sum(a0 * b0r, axis=1), weights=weights)
-        den = np.average(np.sum(b0r ** 2, axis=1), weights=weights)
-
-        scale = num / den
+        scale = num / bnorm
 
         d = a.shape[1]
         mat = np.eye(d + 1)
@@ -1336,15 +1333,17 @@ class Mirror(GeometricTransformation):
         res = np.dot(self.M, points.T).T + (self.normal * (self.tr * 2))[np.newaxis, :]
         return res
 
-    def apply(self, points: np.ndarray|Line, only_linear=False):
+    def apply(self, points: np.ndarray|Line, only_linear=False) -> np.ndarray|Line:
         if isinstance(points, Line):
             return Line(direction=self.apply_on_vector(points.direction),
                         position=self.apply_on_point(points.position))
         mirrored = np.dot(self.M, points.T).T
+        if only_linear:
+            return mirrored
         translation = (self.normal * (self.tr * 2))
         return mirrored + translation[tuple([slice(np.newaxis)] * (mirrored.ndim - translation.ndim))]
 
-    def apply_on_vector(self, vectors):
+    def apply_on_vector(self, vectors:np.ndarray) -> np.ndarray:
         return np.dot(self.M, vectors.T).T
 
     def __len__(self):
