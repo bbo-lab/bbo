@@ -112,6 +112,7 @@ def get_replace_dict(with_brackets=False, no_trailing_slash=False, inverse=False
     # Note: replace_dict should usually not be used outside this module, use encode_path and decode_path for
     #  path manipulation
     replace_dict = get_default_replace_dict() | get_custom_replace_dict()
+    replace_dict = load_environment(replace_dict)
 
     if not return_list:
         for k in replace_dict:
@@ -167,3 +168,14 @@ def remove_trailing_slashes(replace_dict):
 
 def get_inverse_dict(replace_dict):
     return {v: k for k, v in replace_dict.items()}
+
+
+def load_environment(replace_dict: dict[str, str], prefix: str = "BBOPM__") -> dict[str, str]:
+    out = dict(replace_dict)
+    for k in list(out.keys()):
+        env_key = f"{prefix}{k.upper()}"
+        if env_key in os.environ:
+            out[k] = os.environ[env_key]
+
+    out = {k: Path(v).expanduser().as_posix() for k, v in out.items()}
+    return out
