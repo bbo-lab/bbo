@@ -221,8 +221,9 @@ def multiply_rot(lhs, rhs):
     raise Exception(f'Input type not supported {type(lhs)} {type(rhs)}')
 
 
-def apply_rot(r, vec):
-    return np.einsum('...ij,...j->...i', r.as_matrix(), vec)
+def apply_rot(r:Rotation, vec:np.ndarray):
+    res = np.einsum('...ij,...j->...i', r.as_matrix(), vec)
+    return res
     #return vec @ np.swapaxes(r.as_matrix(), -1, -2)
     #mask = ~isnan_rot(r)
     #shape = vec.shape
@@ -561,9 +562,12 @@ class IdentityTransformation(GeometricTransformation):
         return 1
 
 class RigidTransform(GeometricTransformation):
-    def __init__(self, rotation: Rotation|np.ndarray = Rotation.identity(), translation=None, rotation_type=None):
+    def __init__(self,
+                 rotation: Rotation|np.ndarray = Rotation.identity(),
+                 translation=None,
+                 rotation_type=None):
         if translation is None:
-            translation = np.zeros(shape=(1, 3))
+            translation = np.zeros(shape=3 if rotation.single else (1, 3))
         if isinstance(rotation, np.ndarray):
             rs = rotation.shape
             # TODO: Use translation length for further identification if possible
@@ -582,8 +586,10 @@ class RigidTransform(GeometricTransformation):
 
         self.rotation = rotation
         self.translation = translation
-        self.single = rotation.single
-        self.shape = self.translation.shape[:-1]
+        self.single = rotation.single and translation.ndim < 2
+        self.shape = () if self.single else self.translation.shape[:-1] if self.translation.ndim >= 2 else (len(self.rotation),)
+        self.ndim = len(self.shape)
+        assert rotation.single or translation.ndim < 2 or len(self.rotation) == len(self.translation), f"Rotation and translation have to have same length, got {len(self.rotation)} and {len(self.translation)}"
 
     @staticmethod
     def identity_like(other: tuple | list | np.ndarray | numbers.Number):
@@ -595,10 +601,14 @@ class RigidTransform(GeometricTransformation):
             return RigidTransform.identity(shape=other.shape)
         raise TypeError(f"Datatype {type(other)} not understood")
 
+    def is_single(self):
+        return self.single
+
     @staticmethod
     def identity(shape: tuple | list | np.ndarray | numbers.Number | None = None):
         if isinstance(shape, numbers.Number):
             shape = (shape,)
+        #TODO this is hacky and can change with new version of scipy
         r = Rotation.identity(np.prod(shape)) if shape is not None and len(shape) > 0 else Rotation.identity()
         return RigidTransform(rotation=r, translation=np.zeros(shape=(*shape,3)))
 
@@ -644,7 +654,7 @@ class RigidTransform(GeometricTransformation):
             return Line(position=self.apply(vec.position), direction=self.apply(vec.direction, only_linear=True))
         vec = apply_rot(self.rotation, vec)
         if not only_linear:
-            vec += self.translation
+            vec = vec + self.translation
 
         return vec
 
@@ -678,18 +688,21 @@ class RigidTransform(GeometricTransformation):
         return self.apply(vec, only_linear=True)
 
     def __getitem__(self, key):
-        if self.rotation.single:
-            rotation = self.rotation
-        else:
-            rotation = self.rotation[key]
-        return RigidTransform(rotation=rotation, translation=self.translation[key])
+        assert not self.single
+        rotation = self.rotation if self.rotation.single else self.rotation[key]
+        translation = self.translation if self.translation.ndim < 2 else self.translation[key]
+        return RigidTransform(rotation=rotation, translation=translation)
 
     def __setitem__(self, index, value):
         self.rotation[index] = value.rotation
         self.translation[index] = value.translation
 
     def __len__(self):
-        return len(self.rotation)
+        if not self.rotation.single:
+            return len(self.rotation)
+        if self.translation.ndim > 1:
+            return len(self.translation)
+        raise Exception('len() of unsized object')
 
     def __eq__(self, other):
         if isinstance(other, RigidTransform):
@@ -707,7 +720,7 @@ class RigidTransform(GeometricTransformation):
     def as_matrix(self, shape=None):
         if shape is None:
             shape = (4, 4)
-        if not self.single and len(shape) == 2:
+        if not self.single:
             shape = (len(self), *shape)
 
         res = np.zeros(shape=shape, dtype=float)
@@ -878,8 +891,13 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
     nan_mask = np.zeros(len(rots)+2, dtype=bool)
     nan_mask[1:-1] = isnan_rot(rots)
 
-    def funct(interptimes):#TODO allow single numbers
-        interptimes = np.copy(interptimes)
+    def funct(interptimes:Union[int, float, np.ndarray]):
+        scalar_input = np.isscalar(interptimes) or (isinstance(interptimes, np.ndarray) and interptimes.ndim == 0)
+        interptimes = np.atleast_1d(np.asarray(interptimes, dtype=float)).copy()
+
+        if interptimes.size == 0:
+            return get_nan_rot(0) if not scalar_input else get_nan_rot(0)
+
         low = interptimes < tmin
         high = interptimes > tmax
         interptimes[low] = tmin
@@ -899,6 +917,10 @@ def slerp(times, rots, fill_boundary="nan", interpolation_method="linear", sort=
             count = np.count_nonzero(to_nan_mask)
             if count > 0:
                 res[to_nan_mask] = get_nan_rot(np.count_nonzero(to_nan_mask))
+
+        # If the caller provided a single scalar, return a single Rotation instead of a length-1 Rotation
+        if scalar_input:
+            res = res[0]
         return res
     return funct
 
@@ -1027,17 +1049,20 @@ def get_distances(points, v0, v1, tr):
     points = points - tr[np.newaxis, :]
 
 
-class LinearTransformation:
+class LinearTransformation(GeometricTransformation):
+    def get_unit_volume(self):
+        return np.linalg.det(self.mat)
+
     def __init__(self, mat):
         self.mat = mat
 
     def inv(self):
         return LinearTransformation(np.linalg.inv(self.mat))
 
-    def apply(self, points):
+    def apply(self, points, only_linear=False):
         return points @ np.swapaxes(self.mat, -1, -2)
 
-    def as_matrix(self):
+    def as_matrix(self, shape=None):
         return self.mat
 
     def __mul__(self, other):
@@ -1047,6 +1072,7 @@ class LinearTransformation:
 
     def copy(self):
         return LinearTransformation(np.copy(self.mat))
+
 
 
 class AffineTransformation(GeometricTransformation):
@@ -1079,6 +1105,9 @@ class AffineTransformation(GeometricTransformation):
             raise Exception(f'Wrong matrix type {type(mat)}')
         self.mat[...,3, 0:3] = 0
         self.mat[...,3, 3] = 1
+        self.shape = self.mat.shape[:-2]
+        self.dtype = self.mat.dtype
+        self.ndim = len(self.shape)
 
     @staticmethod
     def from_matrix(mat):
@@ -1289,6 +1318,8 @@ class Mirror(GeometricTransformation):
             return Mirror(normal=other.apply(self.normal), point_on_mirror=other.apply(self.point_on_mirror))
         if isinstance(other, Mirror):
             return Rotation.from_rotvec(np.cross(self.normal, other.normal))
+        if isinstance(other, RigidTransform):
+            return AffineTransformation(mat=self.as_matrix() @ other.as_matrix())
         raise Exception(F'Type {type(other)} not supported')
 
     def as_matrix(self, shape=None):
@@ -1318,11 +1349,11 @@ class Mirror(GeometricTransformation):
     def translate(self, tr):
         return Mirror(normal=np.copy(self.normal), point_on_mirror=self.point_on_mirror + tr)
 
-    def transform(self, rot_traf, tr=None):
-        if tr is None:
-            tr = np.zeros((1, 3))
+    def transform(self, rot_traf:Rotation|GeometricTransformation, tr=None):
+        assert tr is None, "Please use RigidTransformation if you need translation"
         if isinstance(rot_traf, Rotation):
-            rot_traf = RigidTransform(rotation=rot_traf, translation=tr)
+            return Mirror(normal=rot_traf.apply(self.normal),
+                          point_on_mirror=rot_traf.apply(self.point_on_mirror))
         return Mirror(normal=rot_traf.apply(self.normal, only_linear=True),
                       point_on_mirror=rot_traf.apply(self.point_on_mirror).reshape((3,)))
 
