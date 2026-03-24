@@ -7,7 +7,7 @@ from matplotlib.colors import Normalize
 
 plt.rcParams['svg.fonttype'] = 'none'
 
-def colored_lineplot(x, y, color, cmap="viridis", linewidth=2, ax=None, vmin=None, vmax=None):
+def colored_lineplot(x, y, color, cmap="viridis", linewidth=2, ax=None, vmin=None, vmax=None, norm=None, scale=True):
     """
     Plot a line whose segments are individually colored.
 
@@ -49,9 +49,10 @@ def colored_lineplot(x, y, color, cmap="viridis", linewidth=2, ax=None, vmin=Non
 
     # Determine if "color" is numeric or actual color strings
     if np.issubdtype(color.dtype, np.number):
-        vmin = vmin if not np.isnan(vmin) else color.min()
-        vmax = vmax if not np.isnan(vmax) else color.max()
-        norm = Normalize(vmin=vmin, vmax=vmax)
+        vmin = vmin if not vmin is None and np.isnan(vmin) else color.min()
+        vmax = vmax if not vmax is None and np.isnan(vmax) else color.max()
+        if norm is None:
+            norm = Normalize(vmin=vmin, vmax=vmax)
         lc = LineCollection(
             segments, cmap=cmap, norm=norm, linewidths=linewidth
         )
@@ -67,8 +68,9 @@ def colored_lineplot(x, y, color, cmap="viridis", linewidth=2, ax=None, vmin=Non
         ax.add_collection(lc)
 
     # Autoscale plot to fit line
-    ax.set_xlim(x.min(), x.max())
-    ax.set_ylim(y.min(), y.max())
+    if scale:
+        ax.set_xlim(x.min(), x.max())
+        ax.set_ylim(y.min(), y.max())
 
     return lc
 
