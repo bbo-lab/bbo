@@ -6,7 +6,7 @@ import numpy as np
 from abc import abstractmethod
 import scipy.spatial.transform
 import numbers
-from scipy.spatial.transform import Rotation, RigidTransform
+from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 from scipy.spatial.transform import RotationSpline
 
