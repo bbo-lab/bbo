@@ -6,12 +6,12 @@ import numpy as np
 from abc import abstractmethod
 import scipy.spatial.transform
 import numbers
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation, RigidTransform
 from scipy.spatial.transform import Slerp
 from scipy.spatial.transform import RotationSpline
 
 
-def best_fit_plane(points, axis=-1, tol=None, return_class="tuple"):
+def best_fit_plane(points, axis=-1, tol=None, return_class="tuple") -> tuple | Mirror:
     points = np.asarray(points, dtype=float)
     pts = np.moveaxis(points, axis, -1)
     flat = pts.reshape(-1, pts.shape[-1])
@@ -34,6 +34,16 @@ def get_mirror_matrix(normal):
     normal = np.asarray(normal)
     H = np.eye(len(normal)) - 2 * np.outer(normal, normal.T) / np.linalg.norm(normal) ** 2
     return H
+
+
+def circular_mean(angles:np.ndarray, axis=None, keepdims=False) -> np.ndarray:
+    """
+    Compute the circular mean of a list of angles (radians)
+    """
+    angles = np.array(angles)
+    sin_sum = np.mean(np.sin(angles), axis=axis, keepdims=keepdims)
+    cos_sum = np.mean(np.cos(angles), axis=axis, keepdims=keepdims)
+    return np.arctan2(sin_sum, cos_sum)
 
 
 class RaveledLine:
@@ -68,14 +78,14 @@ class ElementRef(object):
     def value(self, value): self.obj[self.key] = value
 
 
-def from_quat_rot(quats):
+def from_quat_rot(quats) -> Rotation:
     mask = ~np.any(np.isnan(quats), axis=1)
     res = Rotation.from_rotvec(np.full(shape=(len(mask), 3), fill_value=np.nan))
     res[mask] = Rotation.from_quat(quats[mask])
     return res
 
 
-def from_rotvec_rot(rotvecs):
+def from_rotvec_rot(rotvecs) -> Rotation:
     mask = ~np.any(np.isnan(rotvecs), axis=1)
     res = Rotation.from_rotvec(np.full(shape=(len(mask), 3), fill_value=np.nan))
     if np.any(mask):
@@ -117,12 +127,28 @@ def angle_between(u, v, axis=-1, keepdims=False, normalize:bool=True, xp=np):
     return xp.arctan2(num, 2 * dot)
 
 
-def smoothrot(r, kernel=(1, 2, 1)):
+def smoothrot(r:Rotation, kernel=(1, 2, 1), mode="valid") -> Rotation:
     kernel_len = len(kernel)
-    res = Rotation.identity(len(r))
-    for i in range(len(r) - kernel_len):
-        res[i] = mean_rot(r[i:i + kernel_len], weights=kernel)
-    return res
+    n = len(r)
+    res = list()
+    for i in range(n):
+        if mode == "valid":
+            if i + kernel_len > n:
+                continue
+            res.append(mean_rot(r[i:i + kernel_len], weights=kernel))
+            continue
+        idx = np.arange(i, i + kernel_len)
+        if mode == "same":
+            idx = np.clip(idx, 0, len(r) - 1)
+        elif mode == "wrap":
+            idx = idx % len(r)
+        elif mode == "reflect":
+            idx = np.where(idx < 0, -idx, idx)
+            idx = np.where(idx >= n, 2*n - idx - 2, idx)
+        else:
+            raise ValueError(f"Unknown mode: {mode}")
+        res.append(mean_rot(r[idx], weights=kernel))
+    return Rotation.concatenate(res)
 
 
 #Matrix shape is (...,3,3)
@@ -138,7 +164,7 @@ def rot_from_nanmatrix(matrices):
             res[mask] = Rotation.from_matrix(matrices[mask])
         return res
 
-def isnan_rot(r, inverted=False):
+def isnan_rot(r, inverted=False) -> np.ndarray | bool:
     result = np.isnan(r.magnitude())
     if inverted:
         np.logical_not(result, out=result)
@@ -157,7 +183,7 @@ def rot_insert(arr, obj, values):
     return result
 
 
-def nanmean_rot(r):
+def nanmean_rot(r) -> Rotation:
     return r[isnan_rot(r, inverted=True)].mean()
 
 def from_euler_rot(seq, angles, degrees=False):
@@ -171,7 +197,7 @@ def from_euler_rot(seq, angles, degrees=False):
     res[mask] = Rotation.from_euler(seq, angles[mask], degrees=degrees)
     return res
 
-def inverse_rot(r):
+def inverse_rot(r:Rotation) -> Rotation:
     mask = np.logical_not(isnan_rot(r))
     if isinstance(mask, np.ndarray):
         res = get_nan_rot(len(r))
@@ -185,7 +211,7 @@ def inverse_rot(r):
     raise Exception(f'Input type not supported {type(r)}')
 
 
-def rotation_gradient(rot):
+def rotation_gradient(rot:Rotation) -> Rotation:
     inv_rot = inverse_rot(rot)
     res = multiply_rot(rot[:-2], inv_rot[2:])
     res = np.asarray(
@@ -273,9 +299,16 @@ def cart2equidist(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False)
     return np.stack([res["rxy".index(a)] for a in equidist], axis=-1)
 
 
-def smooth(data, times, sigma, num_neighbors):
+def smooth(data:Rotation|np.ndarray|RigidTransform,
+           times:np.ndarray,
+           sigma:None|float,
+           num_neighbors:int) -> Rotation|np.ndarray|RigidTransform:
     if sigma is None or sigma == 0:
         return data
+    if isinstance(data, RigidTransform):
+        translation = smooth(data.translation, times, sigma, num_neighbors)
+        rotation = smooth(data.rotation, times, sigma, num_neighbors)
+        return RigidTransform(rotation=rotation, translation=translation)
     if isinstance(data, Rotation):
         num_elements = len(data)
         #Equivalent but slower path for Rotations
@@ -370,12 +403,14 @@ def cart2spherical(
     Azimuth rotates around the Longitude on the x-y-plane
     Parameters
     ----------
-    vec
-    cart
-    sph
-    degrees
-
     Returns
+    :param xp:
+    :param vec:
+    :param sph:
+    :param cart:
+    :param degrees:
+    :param center_inclination:
+    :param invertaxis:
 
     """
     vec = xp.moveaxis(xp.asarray(vec), -1, 0)
@@ -451,7 +486,10 @@ class Line:
                     direction=self.direction.transpose(axes))
 
     @staticmethod
-    def concatenate(lines: list|tuple|np.ndarray, axis=0):
+    def concatenate(lines: list|tuple|np.ndarray, axis=None):
+        if axis is None:
+            return Line(position=np.stack([l.position for l in lines], axis=0),
+                        direction=np.stack([l.direction for l in lines], axis=0))
         return Line(position=np.concatenate([l.position for l in lines], axis=axis),
                     direction=np.concatenate([l.direction for l in lines], axis=axis))
 
@@ -481,7 +519,7 @@ class Line:
     def isnan(self):
         return np.logical_or(np.any(np.isnan(self.position), axis=-1), np.any(np.isnan(self.direction), axis=-1))
 
-    def calc_min_point_dist(self, x, outer=False) -> np.ndarray or float:
+    def calc_min_point_dist(self, x, outer=False) -> np.ndarray | float:
         """Return the minimum distances of points from line(s)
         :param x: Nx3 array of points
         :param outer: if True, return the distance matrix
@@ -490,7 +528,7 @@ class Line:
         """
         return point_line_distance(self.position, self.direction / np.linalg.norm(self.direction, axis=-1, keepdims=True), x, outer=outer)
 
-    def distance_to_point(self, x, outer=False) -> np.ndarray or float:
+    def distance_to_point(self, x, outer=False) -> np.ndarray | float:
         return self.calc_min_point_dist(x, outer=outer)
 
     def normalize(self):
@@ -524,6 +562,10 @@ class GeometricTransformation:
 
     @abstractmethod
     def get_unit_volume(self):
+        pass
+
+    @abstractmethod
+    def __mul__(self, other):
         pass
 
     @abstractmethod
@@ -561,6 +603,12 @@ class IdentityTransformation(GeometricTransformation):
     def get_scaling(self):
         return 1
 
+    def __mul__(self, other):
+        if isinstance(other, IdentityTransformation) and other.dim != self.dim:
+            raise ValueError(f"Cannot multiply IdentityTransformations of different dimensions, got {self.dim} and {other.dim}")
+        return other
+
+
 class RigidTransform(GeometricTransformation):
     def __init__(self,
                  rotation: Rotation|np.ndarray = Rotation.identity(),
@@ -584,12 +632,15 @@ class RigidTransform(GeometricTransformation):
             else:
                 raise ValueError(f"Could not reliably determine type of rotation: {rs}")
 
-        self.rotation = rotation
-        self.translation = translation
+        self.rotation:Rotation = rotation
+        self.translation:np.ndarray = translation
         self.single = rotation.single and translation.ndim < 2
         self.shape = () if self.single else self.translation.shape[:-1] if self.translation.ndim >= 2 else (len(self.rotation),)
         self.ndim = len(self.shape)
         assert rotation.single or translation.ndim < 2 or len(self.rotation) == len(self.translation), f"Rotation and translation have to have same length, got {len(self.rotation)} and {len(self.translation)}"
+
+    def get_scaling(self):
+        return 1
 
     @staticmethod
     def identity_like(other: tuple | list | np.ndarray | numbers.Number):
@@ -613,7 +664,10 @@ class RigidTransform(GeometricTransformation):
         return RigidTransform(rotation=r, translation=np.zeros(shape=(*shape,3)))
 
     @staticmethod
-    def align_points(a:np.ndarray|list|dict, b:np.ndarray|list|dict, weights:None|np.ndarray|list|dict=None) -> (RigidTransform, float):
+    def align_points(
+            a:np.ndarray|list|dict,
+            b:np.ndarray|list|dict,
+            weights:None|np.ndarray|list|dict=None) -> tuple[RigidTransform, float]:
         """
         Aligns two sets of points a and b using the Kabsch algorithm.
         :param a:
@@ -744,7 +798,7 @@ class RigidTransform(GeometricTransformation):
         return np.logical_or(isnan_rot(self.rotation), np.any(np.isnan(self.translation), axis=-1))
 
     @staticmethod
-    def concatenate(list):
+    def concatenate(list:RigidTransform):
         return RigidTransform(rotation=Rotation.concatenate([tr.rotation for tr in list]),
                               translation=np.asarray([tr.translation for tr in list]))
 
@@ -788,8 +842,8 @@ class RigidTransform(GeometricTransformation):
         return RigidTransform(rotation=mean_rot(self.rotation, weights=weights), translation=np.average(self.translation, axis=0, weights=weights))
 
     def nanmean(self, keepdims=False, weights=None):
-        valid = np.logical_not(self.isnan())
-        return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid]).mean(weights=weights)
+        valid = ~self.isnan()
+        return RigidTransform(rotation=self.rotation[valid], translation=self.translation[valid]).mean(weights=weights[valid] if weights is not None else None)
 
     def __repr__(self):
         return f"RigidTransform(rotation={self.rotation.as_quat()}, translation={self.translation})"
@@ -1044,12 +1098,10 @@ def get_perpendicular_rotation(source, dest, normalize=False):
     return Rotation.from_rotvec(rotvec, degrees=False)
 
 
-def get_distances(points, v0, v1, tr):
-    t = np.zeros(len(points))
-    points = points - tr[np.newaxis, :]
-
-
 class LinearTransformation(GeometricTransformation):
+    def get_scaling(self):
+        pass
+
     def get_unit_volume(self):
         return np.linalg.det(self.mat)
 
@@ -1078,10 +1130,10 @@ class LinearTransformation(GeometricTransformation):
 class AffineTransformation(GeometricTransformation):
     def __init__(self, mat):
         if isinstance(mat, Rotation):
-            self.mat = np.eye(4, dtype=float)
+            self.mat:np.ndarray = np.eye(4, dtype=float)
             self.mat[0:3, 0:3] = mat.as_matrix()
         elif isinstance(mat, tuple) and len(mat) == 2:
-            self.mat = np.eye(4, dtype=float)
+            self.mat:np.ndarray = np.eye(4, dtype=float)
             if isinstance(mat[0], Rotation):
                 self.mat[0:3, 0:3] = mat[0].as_matrix()
             elif mat[0] is not None:
@@ -1089,17 +1141,17 @@ class AffineTransformation(GeometricTransformation):
             if mat[1] is not None:
                  self.mat[0:3, 3] = mat[1]
         elif isinstance(mat, LinearTransformation):
-            self.mat = np.eye(4, dtype=float)
+            self.mat:np.ndarray = np.eye(4, dtype=float)
             self.mat[0:3, 0:3] = mat.mat
         elif isinstance(mat, AffineTransformation):
-            self.mat = mat.mat
+            self.mat:np.ndarray = mat.mat
         elif isinstance(mat, GeometricTransformation):
             self.mat = mat.as_matrix(shape=(4, 4))
         elif isinstance(mat, np.ndarray):
             if mat.shape[-1] == 4 and mat.shape[-2] == 4:
-                self.mat = np.copy(mat)
+                self.mat:np.ndarray = np.copy(mat)
             else:
-                self.mat = np.zeros_like(mat, shape=(*mat.shape[0:-2], 4, 4))
+                self.mat:np.ndarray = np.zeros_like(mat, shape=(*mat.shape[0:-2], 4, 4))
                 self.mat[...,0:mat.shape[-2], 0:mat.shape[-1]] = mat
         else:
             raise Exception(f'Wrong matrix type {type(mat)}')
@@ -1112,6 +1164,9 @@ class AffineTransformation(GeometricTransformation):
     @staticmethod
     def from_matrix(mat):
         return AffineTransformation(mat)
+
+    def astype(self, dtype, copy=True):
+        return AffineTransformation(self.mat.astype(dtype, copy=True))
 
     @staticmethod
     def identity(shape=None):
@@ -1199,7 +1254,7 @@ class AffineTransformation(GeometricTransformation):
             raise Exception('Not an array')
         return len(self.mat)
 
-    def __mul__(self, other):
+    def __mul__(self, other) -> AffineTransformation:
         if not isinstance(other, AffineTransformation):
             other = AffineTransformation(other)
         return AffineTransformation(self.mat @ other.mat)
@@ -1254,6 +1309,15 @@ def align_points(a:dict|list|np.ndarray, b:dict|list|np.ndarray, weights=None, k
 
 
 class Reflection(GeometricTransformation):
+    def get_scaling(self):
+        return 1
+
+    def get_unit_volume(self):
+        return -1
+
+    def inv(self):
+        return Reflection(np.copy(self.normal))
+
     def __init__(self, normal):
         normal = np.array(normal, copy=True)
         self.normal = normal / np.linalg.norm(normal, axis=0)
@@ -1286,7 +1350,17 @@ class Reflection(GeometricTransformation):
         raise Exception(F'Type {type(other)} not supported')
 
 
+
 class Mirror(GeometricTransformation):
+    def get_scaling(self):
+        raise Exception("Not implemented")
+
+    def get_unit_volume(self):
+        return -1
+
+    def inv(self):
+        return Mirror(normal=np.copy(self.normal), tr=np.copy(self.tr))
+
     def __init__(self, normal, point_on_mirror=None, tr=None):
         normal = np.asarray(normal)
         normal = normal / np.linalg.norm(normal)
