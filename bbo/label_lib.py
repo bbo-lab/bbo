@@ -568,7 +568,7 @@ def to_numpy(labels,
         time_bases = [extract_frame_idxs for _ in range(cams_n)]
 
     if time_bases_complete:
-        time_bases = [tb[extract_frame_idxs] for tb in time_bases]
+        time_bases = [tb[extract_frame_idxs] for tb in time_bases_complete]
 
     assert np.all([len(tb) == len(extract_frame_idxs) for tb in time_bases]), (
         "time_bases and extract_frame_idxs must match in length")
