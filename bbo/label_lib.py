@@ -343,8 +343,9 @@ def get_frame_labelers(labels, fr_idx, cam_idx=None):
     return labelers
 
 
-def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, times_to_0=True, nan_deletes=False):
+def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, times_to_0=True, nan_deletes=False, force_num_cams=None, framerange=None):
     # Load data from files
+    logger.log(logging.INFO, f"Merging {labels_list}")
     labels_list = [update(ll) if isinstance(ll, dict) else load(ll, v0_format=False) for ll in labels_list]
     # Normalize path of target_file
     if isinstance(target_file, str) or isinstance(target_file, Path):
@@ -377,7 +378,11 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
     index_unmarked = target_labels["labeler_list"].index("_unmarked")  # Labeler are already matched
     index_create = target_labels["action_list"].index("create")
     index_delete = target_labels["action_list"].index("delete")
+    if force_num_cams is not None and data_shape[0] != force_num_cams:
+        logger.log(logging.WARN, f"force_num_cams {force_num_cams} != data_shape[0] {data_shape[0]}, will force data_shape to {force_num_cams}")
+        data_shape = (force_num_cams, *data_shape[1:])
     default_action = np.ones(data_shape[0], dtype=int) * index_create
+
     for i_labels, labels in enumerate(labels_list):
         logger.log(logging.INFO, f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
 
@@ -385,6 +390,10 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
             if ln not in target_labels["labels"]:
                 target_labels["labels"][ln] = {}
             for fr_idx in labels["labels"][ln]:
+                if framerange is not None and not (framerange[0] <= fr_idx <= framerange[1]):
+                    logger.log(logging.DEBUG, f"Skipping {ln} {fr_idx} due to framerange {framerange}")
+                    continue
+
                 if fr_idx not in target_labels["labels"][ln]:
                     target_labels["labels"][ln][fr_idx] = {
                         'coords': np.full(data_shape, np.nan),
@@ -397,8 +406,19 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
 
                 # Source is not labeled unmarked
                 transfer_mask = source_entry['labeler'] != index_unmarked
+
+                if force_num_cams is not None:
+                    #scip if force_num_cams is not the same as action-length
+                    num_cams = len(transfer_mask)
+                    if num_cams != force_num_cams:
+                        logger.log(logging.WARN, f"Skipping {ln} {fr_idx} due to force_num_cams {force_num_cams} != {num_cams}")
+                        continue
                 # Action is create
-                transfer_mask &= source_entry.get("action", default_action) == index_create
+                try:
+                    transfer_mask &= source_entry.get("action", default_action) == index_create
+                except Exception as e:
+                    logger.log(logging.ERROR, f"Error in {ln} {fr_idx} {source_entry.get('action', default_action)} {default_action} {index_create}")
+                    raise e
                 # Target time is older. We do <= to be able to do in place corrections in the merged files.
                 transfer_mask &= target_entry["point_times"] <= source_entry["point_times"]
 
@@ -511,10 +531,9 @@ def make_global_lists(labels_list):
                 for i, labeler_idx in enumerate(labels['labels'][ln][fr_idx]["labeler"]):
                     labeler = labels["labeler_list"][labeler_idx]
                     labels['labels'][ln][fr_idx]["labeler"][i] = labeler_list_all.index(labeler)
-                if "action" in labels["labels"][ln][fr_idx]:
-                    for i, action_idx in enumerate(labels['labels'][ln][fr_idx]["action"]):
-                        action = labels["action_list"][action_idx]
-                        labels['labels'][ln][fr_idx]["action"][i] = action_list_all.index(action)
+                for i, action_idx in enumerate(labels['labels'][ln][fr_idx].get("action", ())):
+                    action = labels["action_list"][action_idx]
+                    labels['labels'][ln][fr_idx]["action"][i] = action_list_all.index(action)
         labels["labeler_list"] = labeler_list_all.copy()
         labels["action_list"] = action_list_all.copy()
 
@@ -565,7 +584,7 @@ def to_numpy(labels,
         extract_labels = (extract_labels,)
 
     if time_bases is None:
-        time_bases = [extract_frame_idxs for _ in range(cams_n)]
+        time_bases = [extract_frame_idxs] * cams_n
 
     if time_bases_complete:
         time_bases = [tb[extract_frame_idxs] for tb in time_bases]
@@ -586,12 +605,13 @@ def to_numpy(labels,
                 else:
                     lm_idx = i_lm
 
-                for i_cam in range(cams_n):
-                    cam_time = time_bases[i_cam][i_fr]
-                    time_base_idx = np.where(time_base == cam_time)[0][0]
-                    if fr_idx in labels["labels"][lm]:
-                        cam_coords = labels["labels"][lm][fr_idx]["coords"][i_cam]
+                frame_label = labels["labels"][lm].get(fr_idx, None)
+                if frame_label is not None:
+                    for i_cam in range(cams_n):
+                        cam_coords = frame_label["coords"][i_cam]
                         if not np.any(np.isnan(cam_coords)):
+                            cam_time = time_bases[i_cam][i_fr]
+                            time_base_idx = np.where(time_base == cam_time)[0][0]
                             # if (fr_idx == 7529 and i_cam == 1) or (fr_idx == 7572 and i_cam == 0):
                             #     print(f"Writing cam {i_cam}, frame {fr_idx} to {time_base_idx}")
                             landmark_imcoords[i_cam, time_base_idx, lm_idx] = (
