@@ -113,7 +113,7 @@ def scale_ax(ax, factor, axis='x'):
     axis.set_major_formatter(FuncFormatter(lambda t, _: f"{t * factor:.1f}"))
 
 def tidy_ax(ax,
-            svg_fonttype='none',
+            svg_fonttype='none',  # The string here intended, for SVG font. Disable with None.
             adjust_lims=True,  # Adjust xlim and ylim to full ticks
             remove_spines=('top', 'right'),
             box=True,  # Make axes square
@@ -123,7 +123,7 @@ def tidy_ax(ax,
     if svg_fonttype is not None:
         plt.rcParams['svg.fonttype'] = svg_fonttype
 
-    if remove_spines is 'all':
+    if remove_spines == 'all':
         remove_spines = ax.spines.keys()
     for spine in remove_spines:
         ax.spines[spine].set_visible(False)
