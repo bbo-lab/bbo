@@ -7,9 +7,9 @@ channels:
 dependencies:
   - python=3.12
   - ipython
-  - ipykernel
+  - ipykernel<7  # I experienced weird matplotlib issues with 7 ~Kay 20260827
   - matplotlib  # Brings pyside6
-  # - pyside6  # Should come with matplotlib
+  - pyside6  # Should come with matplotlib anyway
   - ipympl
   - numpy
   - scipy
