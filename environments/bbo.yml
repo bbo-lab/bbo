@@ -1,7 +1,7 @@
 # This is an ongoing attempt for a standard enviroment for bbo software
 # Windows version
 
-name: bbo_windows
+name: bbo
 channels:
   - conda-forge
 dependencies:
@@ -10,16 +10,20 @@ dependencies:
   - ipykernel
   - matplotlib  # Brings pyside6
   # - pyside6  # Should come with matplotlib
+  - ipympl
+  - numpy
+  - scipy
+  - jupyterlab
+  - pyqtgraph
   - pip:
       - bbo-bbo
       - bbo-calibcamlib
       - bbo-ccvtools
       - bbo-svidreader
-#      - cupy-cuda12x  # Didn't get conda variant running
-      - cupy-cuda12x[ctk]  # Dows not require CUDA Toolkit, with CUDA, remove ctk
       - pandas
       - mpmath
       - pyyaml
       - scipy
       - opencv-python-headless  # conda version brings incompatible qt
-
+      # - cupy-cuda12x[ctk]  # Does not require CUDA Toolkit, with CUDA, remove ctk
+      - cupy  # TODO: Check if conda version is better choice
