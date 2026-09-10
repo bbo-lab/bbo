@@ -650,20 +650,20 @@ def to_pandas(labels):
 
 def write_label_yaml(file_handle, labels):
     if Version(labels["version"]) >= Version("1.0"):
-        write_label_yaml_v2(file_handle, labels)
-    else:
         write_label_yaml_v1(file_handle, labels)
+    else:
+        write_label_yaml_v0(file_handle, labels)
 
 
 def read_label_yaml(file_handle):
     if Version(read_version(file_handle)) >= Version("1.0"):
-        return read_label_yaml_v2(file_handle)
-    else:
         return read_label_yaml_v1(file_handle)
+    else:
+        return read_label_yaml_v0(file_handle)
 
 
 # pyyaml is WAY too slow for large files
-def write_label_yaml_v1(file_handle, labels):
+def write_label_yaml_v0(file_handle, labels):
     f = file_handle
 
     f.write("version: ")
@@ -742,7 +742,7 @@ def write_label_yaml_v1(file_handle, labels):
                 f.write("]\n")
 
 
-def read_label_yaml_v1(file):
+def read_label_yaml_v0(file):
     labels = {}
     current_key = None
     current_label = None
@@ -822,7 +822,7 @@ def read_label_yaml_v1(file):
 
 
 # pyyaml is WAY too slow for large files
-def write_label_yaml_v2(file_handle, labels):
+def write_label_yaml_v1(file_handle, labels):
 
     f = file_handle
 
@@ -868,7 +868,7 @@ def write_label_yaml_v2(file_handle, labels):
                     else:
                         f.write(str(row[0]))
                     f.write(", ")
-                    if np.isnan(row[0]):
+                    if np.isnan(row[1]):
                         f.write(".nan")
                     else:
                         f.write(str(row[1]))
@@ -900,7 +900,7 @@ def write_label_yaml_v2(file_handle, labels):
                     f.write("]\n")
 
 
-def read_label_yaml_v2(file):
+def read_label_yaml_v1(file):
     labels = {}
     current_key = None
     current_label = None
@@ -911,10 +911,7 @@ def read_label_yaml_v2(file):
 
     yi = 2 * " "  # yaml_indent
 
-    pattern = r"\d+(?:\.\d+)?"
-    re_key_numlist = re.compile(pattern)
-
-    for line in file.readlines():
+    for line in file:
         line_parts = None
         try:
             if in_line:
@@ -957,26 +954,24 @@ def read_label_yaml_v2(file):
                     current_prop = line_parts[0][:-1]
 
                 if current_prop == "lr":
-                    list_part = " ".join(line_parts[1:])
+                    list_part = line.partition(":")[2].strip()[1:-1].strip()
                     labels[current_key][current_label][current_frame]["labeler"] = np.array(
-                        [int(x) for x in re_key_numlist.findall(list_part)])
+                        [int(x) for x in (list_part.split(",") if list_part else [])])
                 elif current_prop == "pts":
-                    list_part = " ".join(line_parts[1:])
+                    list_part = line.partition(":")[2].strip()[1:-1].strip()
                     labels[current_key][current_label][current_frame]["point_times"] = np.array(
-                        [float(x) for x in re_key_numlist.findall(list_part)])
+                        [float(x) for x in (list_part.split(",") if list_part else [])])
                 elif current_prop == "a":
-                    list_part = " ".join(line_parts[1:])
+                    list_part = line.partition(":")[2].strip()[1:-1].strip()
                     labels[current_key][current_label][current_frame]["action"] = np.array(
-                        [int(x) for x in re_key_numlist.findall(list_part)])
+                        [int(x) for x in (list_part.split(",") if list_part else [])])
                 elif current_prop == "crds":
                     if len(line_parts) == 1:
-                        labels[current_key][current_label][current_frame]["coords"] = np.zeros((0, 2))
+                        labels[current_key][current_label][current_frame]["coords"] = []
                     elif line_parts[0] == "-":
                         coords = [line_parts[1][1:-1], line_parts[2][0:-1]]
                         coords = [np.nan if c == ".nan" else float(c) for c in coords]
-                        labels[current_key][current_label][current_frame]["coords"] = np.vstack(
-                            (labels[current_key][current_label][current_frame]["coords"],
-                             np.array([coords])))
+                        labels[current_key][current_label][current_frame]["coords"].append(coords)
                     else:
                         raise Exception("We should never get here", line)
         except Exception as e:
@@ -988,6 +983,11 @@ def read_label_yaml_v2(file):
             logger.log(logging.ERROR, line)
             logger.log(logging.ERROR, line_parts)
             raise e
+
+    for frames in labels.get("labels", {}).values():
+        for frame in frames.values():
+            if "coords" in frame:
+                frame["coords"] = np.asarray(frame["coords"], dtype=float).reshape(-1, 2)
 
     return labels
 

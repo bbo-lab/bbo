@@ -13,6 +13,7 @@ dependencies:
   - ipympl
   - numpy
   - scipy
+  - cupy  # On Linux, this installs the required cuda packages, too. TODO: Check Windows
   - jupyterlab
   - pyqtgraph
   - pip:
@@ -26,4 +27,3 @@ dependencies:
       - scipy
       - opencv-python-headless  # conda version brings incompatible qt
       # - cupy-cuda12x[ctk]  # Does not require CUDA Toolkit, with CUDA, remove ctk
-      - cupy  # TODO: Check if conda version is better choice
