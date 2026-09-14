@@ -573,11 +573,19 @@ def to_numpy(labels,
 
     cams_n = get_n_cams(labels)
 
+    labeled_frame_idxs = get_labeled_frame_idxs(labels)
     if extract_frame_idxs is None:
-        extract_frame_idxs = get_labeled_frame_idxs(labels)
+        extract_frame_idxs = labeled_frame_idxs
+    else:
+        assert labeled_frame_idxs[-1] >= extract_frame_idxs[-1], \
+            f"Requested to extract up to index {extract_frame_idxs[-1]}, got max {labeled_frame_idxs[-1]}"
 
+    labeled_labels = get_labels(labels)
     if extract_labels is None:
-        extract_labels = get_labels(labels)
+        extract_labels = labeled_labels
+    else:
+        assert set(extract_labels) <= set(labeled_labels), \
+            f"Requested to extract inexistant labels {extract_labels}, got {labeled_labels}."
 
     scalar_label = isinstance(extract_labels, str)
     if scalar_label:
@@ -587,10 +595,7 @@ def to_numpy(labels,
         time_bases = [extract_frame_idxs] * cams_n
 
     if time_bases_complete:
-        time_bases = [tb[extract_frame_idxs] for tb in time_bases]
-
-    assert np.all([len(tb) == len(extract_frame_idxs) for tb in time_bases]), (
-        "time_bases and extract_frame_idxs must match in length")
+        time_bases = [tb[extract_frame_idxs[extract_frame_idxs<len(tb)]] for tb in time_bases]
 
     time_base = np.unique(np.concatenate(time_bases, axis=0))
 
