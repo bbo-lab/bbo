@@ -1,4 +1,5 @@
 import os
+import io
 from pathlib import Path
 import numpy as np
 import yaml
@@ -269,7 +270,9 @@ def load_raw_yaml(file_path: Path):
     return labels
 
 
-def save(file_path, labels, yml_only=False, v0_format=False):
+def save(file_path, labels,
+         yml_only=False, v0_format=False,
+         yml_write_direct=False):
     # if v0_format is None:
     #     v0_format = True
     #     logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
@@ -291,7 +294,7 @@ def save(file_path, labels, yml_only=False, v0_format=False):
         np.savez(file_path.with_suffix(".npz").as_posix(), labels)
 
     with open(file_path.with_suffix(".yml").as_posix(), 'w') as f:
-        write_label_yaml(f, labels)
+        write_label_yaml(f, labels, yml_write_direct=yml_write_direct)
 
 
 def get_labels(labels, allow_empty=False):
@@ -653,11 +656,20 @@ def to_pandas(labels):
     return pd.DataFrame(data, index=time_base, columns=columns)
 
 
-def write_label_yaml(file_handle, labels):
-    if Version(labels["version"]) >= Version("1.0"):
-        write_label_yaml_v1(file_handle, labels)
-    else:
-        write_label_yaml_v0(file_handle, labels)
+def write_label_yaml(file_handle, labels, yml_write_direct=False):
+    write_label_func = write_label_yaml_v1 \
+        if Version(labels["version"]) >= Version("1.0")\
+        else write_label_yaml_v0
+
+    if write_label_yaml:
+        write_label_func(file_handle, labels)
+        return
+
+    virtual_file = io.StringIO()
+    write_label_func(virtual_file, labels)
+    yml = virtual_file.getvalue()
+    file_handle.write(yml)
+    virtual_file.close()
 
 
 def read_label_yaml(file_handle):
