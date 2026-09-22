@@ -288,10 +288,14 @@ def cart2equidist(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False)
         idx = "xyz".index(a)
         vec[idx] = -vec[idx]
     x, y, z = vec
-    length = np.square(x) + np.square(y)
-    norm = np.sqrt(length + np.square(z))
-    length = np.sqrt(length)
-    length = np.divide(np.arctan2(length, -z), length, where=length!=0)
+    xy = np.square(x) + np.square(y)
+    norm = np.sqrt(xy + np.square(z))
+    xy = np.sqrt(xy)
+    length = np.arctan2(xy, -z)
+    if isinstance(length, np.ndarray):
+        np.divide(length, xy, where=xy!=0, out=length)
+    else:
+        length = length / xy if xy != 0 else 1
     res = [norm, x * length, y * length]
     if degrees:
         res[1] = np.rad2deg(res[1])
@@ -302,7 +306,8 @@ def cart2equidist(vec, cart="xyz", equidist="rxy", invertaxis="", degrees=False)
 def smooth(data:Rotation|np.ndarray|RigidTransform,
            times:np.ndarray,
            sigma:None|float,
-           num_neighbors:int) -> Rotation|np.ndarray|RigidTransform:
+           num_neighbors:int,
+           sides=("left","right")) -> Rotation|np.ndarray|RigidTransform:
     if sigma is None or sigma == 0:
         return data
     if isinstance(data, RigidTransform):
@@ -328,10 +333,12 @@ def smooth(data:Rotation|np.ndarray|RigidTransform,
 
     for shift in range(1, min(num_neighbors // 2, len(data)-1)):
         weights = np.exp(-np.square(times[:-shift] - times[shift:]) * factor)
-        accumulated_weights[:-shift] += weights
-        accumulated_weights[shift:] += weights
-        result[:-shift] += weights[expand_dims] * data[shift:]
-        result[shift:] += weights[expand_dims] * data[:-shift]
+        if "left" in sides:
+            accumulated_weights[:-shift] += weights
+            result[:-shift] += weights[expand_dims] * data[shift:]
+        if "right" in sides:
+            accumulated_weights[shift:] += weights
+            result[shift:] += weights[expand_dims] * data[:-shift]
     result /= accumulated_weights[expand_dims]
     return result
 
@@ -585,10 +592,25 @@ class GeometricTransformation:
 
 
 class IdentityTransformation(GeometricTransformation):
-    def __init__(self, dim):
+    def __init__(self, dim, shape=None):
         self.dim = dim
+        self.shape = shape
+        self.ndim = (1 if isinstance(shape, numbers.Number) else len(shape)) if shape is not None else 0
 
     def apply(self, vec, only_linear=False):
+        if self.shape is None:
+            return vec
+        if isinstance(vec, numbers.Number):
+            return np.full(shape=self.shape, fill_value=vec)
+        vec_shape = vec.shape[:-1]  # hide vector dimension
+
+        try:
+            np.broadcast_shapes(self.shape, vec_shape)
+        except ValueError:
+            raise ValueError(
+                f"Input shape {vec.shape} does not broadcast with expected shape {self.shape}"
+            )
+
         return vec
 
     def as_matrix(self, shape=None):
@@ -598,10 +620,10 @@ class IdentityTransformation(GeometricTransformation):
         return self
 
     def get_unit_volume(self):
-        return 1
+        return 1 if self.shape is None else np.ones(shape=self.shape)
 
     def get_scaling(self):
-        return 1
+        return 1 if self.shape is None else np.ones(shape=self.shape)
 
     def __mul__(self, other):
         if isinstance(other, IdentityTransformation) and other.dim != self.dim:
@@ -667,7 +689,8 @@ class RigidTransform(GeometricTransformation):
     def align_points(
             a:np.ndarray|list|dict,
             b:np.ndarray|list|dict,
-            weights:None|np.ndarray|list|dict=None) -> tuple[RigidTransform, float]:
+            weights:None|np.ndarray|list|dict=None,
+            ignore_nans=False) -> tuple[RigidTransform, float]:
         """
         Aligns two sets of points a and b using the Kabsch algorithm.
         :param a:
@@ -679,6 +702,12 @@ class RigidTransform(GeometricTransformation):
             common_keys = a.keys() & b.keys()
             a = np.asarray([a[k] for k in common_keys])
             b = np.asarray([b[k] for k in common_keys])
+        if ignore_nans:
+            is_valid = ~(np.any(np.isnan(a), axis=-1) | np.any(np.isnan(b), axis=-1))
+            a = a[is_valid]
+            b = b[is_valid]
+            if weights is not None:
+                weights = np.asarray(weights)[is_valid]
         amean, bmean = np.average(a, weights=weights, axis=0, keepdims=True), np.average(b, weights=weights, axis=0, keepdims=True)
         rotation, rssd = Rotation.align_vectors(a - amean, b - bmean, weights=weights)
         return RigidTransform(rotation=rotation, translation=amean[0] - rotation.apply(bmean[0])), rssd
@@ -1094,7 +1123,9 @@ def get_perpendicular_rotation(source, dest, normalize=False):
     rotvec = np.cross(source, dest)
     norm = np.linalg.norm(rotvec, axis=-1, keepdims=True)
     dot = np.sum(source * dest, axis=-1, keepdims=True)
-    rotvec *= np.divide(np.arccos(dot), norm, where=norm > 1e-10)
+    rescale = np.arccos(dot)
+    np.divide(rescale, norm, where=norm > 1e-10, out=rescale)
+    rotvec *= rescale
     return Rotation.from_rotvec(rotvec, degrees=False)
 
 
@@ -1148,15 +1179,21 @@ class AffineTransformation(GeometricTransformation):
         elif isinstance(mat, GeometricTransformation):
             self.mat = mat.as_matrix(shape=(4, 4))
         elif isinstance(mat, np.ndarray):
-            if mat.shape[-1] == 4 and mat.shape[-2] == 4:
-                self.mat:np.ndarray = np.copy(mat)
+            if mat.shape[-1] == mat.shape[-2]:
+                self.mat: np.ndarray = np.copy(mat)
+            elif mat.shape[-2] == mat.shape[-1] - 1:
+                target_dim = mat.shape[-1]
+                self.mat: np.ndarray = np.zeros_like(
+                    mat, shape=(*mat.shape[:-2], target_dim, target_dim)
+                )
+                self.mat[..., :mat.shape[-2], :mat.shape[-1]] = mat
+                self.mat[..., -1, -1] = 1
             else:
-                self.mat:np.ndarray = np.zeros_like(mat, shape=(*mat.shape[0:-2], 4, 4))
-                self.mat[...,0:mat.shape[-2], 0:mat.shape[-1]] = mat
+                raise ValueError(f"Invalid shape for affine transformation matrix: {mat.shape}")
         else:
             raise Exception(f'Wrong matrix type {type(mat)}')
-        self.mat[...,3, 0:3] = 0
-        self.mat[...,3, 3] = 1
+        self.mat[...,-1, 0:-1] = 0
+        self.mat[...,-1, -1] = 1
         self.shape = self.mat.shape[:-2]
         self.dtype = self.mat.dtype
         self.ndim = len(self.shape)
@@ -1187,8 +1224,8 @@ class AffineTransformation(GeometricTransformation):
             raise ValueError(f"Invalid type for AffineTransformation: {data['type']}")
         return AffineTransformation(np.asarray(data["mat"]))
 
-    def get_scaling(self, keepdims=False):
-        return np.linalg.norm(self.mat[...,0:3, 0:3], axis=-2, keepdims=keepdims)
+    def get_scaling(self, keepdims=False, rows=False):
+        return np.linalg.norm(self.mat[...,0:3, 0:3], axis=-1 if rows else -2, keepdims=keepdims)
 
     def get_translation(self):
         return self.mat[..., 0:3, 3]
@@ -1205,6 +1242,8 @@ class AffineTransformation(GeometricTransformation):
             return AffineTransformation(new_mat)
 
     def scale(self, scale: Union[numbers.Number, np.ndarray, list, tuple], inplace):
+        if isinstance(scale, list) or isinstance(scale, tuple):
+            scale = np.asarray(scale)
         if isinstance(scale, np.ndarray) and scale.ndim == 1:
             scale = scale[:, np.newaxis]
         if inplace:
@@ -1221,10 +1260,10 @@ class AffineTransformation(GeometricTransformation):
     def apply(self, points, only_linear=False):
         if isinstance(points, Line):
             return Line(position=self.apply(points.position), direction=self.apply(points.direction, only_linear=True))
-        result = points @ np.swapaxes(self.mat[...,0:3, 0:3],-1,-2)
+        result = points @ np.swapaxes(self.mat[...,0:-1, 0:-1],-1,-2)
         if only_linear:
             return result
-        return result + self.mat[...,0:3, 3]
+        return result + self.mat[...,0:-1, -1]
 
     def apply_on_vector(self, vectors):
         return self.apply(vectors, only_linear=True)
@@ -1258,6 +1297,11 @@ class AffineTransformation(GeometricTransformation):
         if not isinstance(other, AffineTransformation):
             other = AffineTransformation(other)
         return AffineTransformation(self.mat @ other.mat)
+
+    def __rmul__(self, other):
+        if not isinstance(other, AffineTransformation):
+            other = AffineTransformation(other)
+        return AffineTransformation(other.mat @ self.mat)
 
     def __repr__(self):
         return f"AffineTransformation({self.mat})"
@@ -1392,7 +1436,7 @@ class Mirror(GeometricTransformation):
             return Mirror(normal=other.apply(self.normal), point_on_mirror=other.apply(self.point_on_mirror))
         if isinstance(other, Mirror):
             return Rotation.from_rotvec(np.cross(self.normal, other.normal))
-        if isinstance(other, RigidTransform):
+        if isinstance(other, RigidTransform | AffineTransformation):
             return AffineTransformation(mat=self.as_matrix() @ other.as_matrix())
         raise Exception(F'Type {type(other)} not supported')
 
@@ -1488,7 +1532,7 @@ class Mirror(GeometricTransformation):
         mirror_3d_vertices = self.find_intersection(lines[0], lines[1])
         return np.linalg.norm(mirror_3d_vertices[np.newaxis, :, :] - mirror_3d_vertices[:, np.newaxis, :], axis=-1)
 
-    def optimize_from_lines(self, lines, distances):
+    def optimize_from_lines(self, lines, distances:np.ndarray):
         distances = np.asarray(distances)
         from scipy.optimize import minimize
 
