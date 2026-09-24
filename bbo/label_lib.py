@@ -1,9 +1,9 @@
 import os
 import io
+import json
 from pathlib import Path
 import numpy as np
 import yaml
-import itertools
 from bbo.exceptions import NoDataException
 import re
 import logging
@@ -638,22 +638,235 @@ def to_numpy(labels,
     return landmark_imcoords, time_base
 
 
-def to_pandas(labels):
-    if legacy := (Version(labels["version"]) < Version("1.0")):
+def to_pandas(labels, *, per_cam=False):
+    """Convert labels to a DataFrame indexed by frame number.
+
+    Each label/camera has x, y, labeler, point_time and action columns.
+    Labeler and action values are IDs into the lists stored, together with
+    version, in ``DataFrame.attrs``. Missing actions are NaN. With per_cam,
+    return a list in camera order, without the ``cNN_`` column prefixes.
+    Use :func:`to_csv` to retain the metadata in a tab-separated file.
+    """
+    if Version(labels["version"]) < Version("1.0"):
         labels = convert_v0_to_v1(labels)
 
     import pandas as pd  # We don't want this as a global dependency
-    label_names = get_labels(labels)
-    data, time_base = to_numpy(labels)
-    data_shape = data.shape
-    data = data.transpose([1, 0, 2, 3]).reshape((data_shape[1], -1))
 
-    columns = list([f"{s}_{co}"
-                    for s, co in itertools.product([f"c{c:02d}_{l}"
-                                                    for c, l in itertools.product(range(data_shape[0]), label_names)],
-                                                   ["x", "y"])])
+    entries = [entry for frames in labels["labels"].values() for entry in frames.values()]
+    n_cams = len(entries[0]["coords"]) if entries else 0
+    for entry in entries:
+        if np.shape(entry["coords"]) != (n_cams, 2):
+            raise ValueError("All coords must have the same shape (n_cams, 2)")
+        for field in ("labeler", "point_times", "action"):
+            if field in entry and np.shape(entry[field]) != (n_cams,):
+                raise ValueError(f"{field} must contain one value per camera")
 
-    return pd.DataFrame(data, index=time_base, columns=columns)
+    index = pd.Index(get_labeled_frame_idxs(labels), name="frame")
+    fields = ("x", "y", "labeler", "point_time", "action")
+
+    def make_dataframe(cameras):
+        columns = {}
+        for name, frames in labels["labels"].items():
+            for cam in cameras:
+                prefix = f"{name}_" if per_cam else f"c{cam:02d}_{name}_"
+                values = {field: {} for field in fields}
+                for frame, entry in frames.items():
+                    values["x"][frame], values["y"][frame] = entry["coords"][cam]
+                    values["labeler"][frame] = entry["labeler"][cam]
+                    values["point_time"][frame] = entry["point_times"][cam]
+                    values["action"][frame] = entry["action"][cam] if "action" in entry else np.nan
+                for field in fields:
+                    columns[prefix + field] = pd.Series(values[field], dtype=float).reindex(index)
+        result = pd.DataFrame(columns, index=index)
+        result.attrs = {key: labels[key].copy() if isinstance(labels[key], list) else labels[key]
+                        for key in ("version", "labeler_list", "action_list")}
+        return result
+
+    if per_cam:
+        return [make_dataframe([cam]) for cam in range(n_cams)]
+    return make_dataframe(range(n_cams))
+
+
+def from_pandas(data, *, per_cam=False, labeler="_unknown", point_time=0,
+                labeler_list=None, action_list=None):
+    """Convert a DataFrame, or a list of camera DataFrames, to v1 labels.
+
+    The index contains integer frame numbers. Lists imply per_cam=True;
+    per_cam=True also accepts a single unprefixed camera DataFrame. ID lists
+    default to the DataFrame attrs, then to get_empty_labels() defaults.
+    Explicit list arguments override attrs without remapping IDs.
+
+    Missing labeler/point_time columns or cells use the keyword defaults.
+    Entirely empty label/frame rows are omitted. Missing cameras are unmarked.
+    If every action is missing, omit the action field. If only some actions
+    are missing, use the v1 implicit action ("create") for those cameras.
+    """
+    import pandas as pd
+
+    if isinstance(data, (list, tuple)):
+        tables = list(data)
+        per_cam = True
+    else:
+        tables = [data]
+    if not all(isinstance(table, pd.DataFrame) for table in tables):
+        raise TypeError("Expected a DataFrame or a list of DataFrames")
+
+    labels = get_empty_labels()
+    for key, override in (("labeler_list", labeler_list), ("action_list", action_list)):
+        metadata = [table.attrs[key] for table in tables if key in table.attrs]
+        if override is None and metadata:
+            if any(value != metadata[0] for value in metadata[1:]):
+                raise ValueError(f"Camera DataFrames have conflicting {key}")
+            override = metadata[0]
+        if override is not None:
+            labels[key] = list(override)
+        if len(set(labels[key])) != len(labels[key]):
+            raise ValueError(f"{key} must contain unique names")
+    versions = [str(table.attrs["version"]) for table in tables if "version" in table.attrs]
+    if any(Version(value).major != 1 for value in versions):
+        raise ValueError("Expected label_lib v1 metadata")
+    if versions:
+        if len(set(versions)) != 1:
+            raise ValueError("Camera DataFrames have conflicting versions")
+        labels["version"] = versions[0]
+
+    def labeler_id(name):
+        if name not in labels["labeler_list"]:
+            labels["labeler_list"].append(name)
+        return labels["labeler_list"].index(name)
+
+    def checked_id(value, names, field):
+        if not np.isfinite(value) or value != int(value) or not 0 <= value < len(names):
+            raise ValueError(f"Invalid {field} ID: {value}")
+        return int(value)
+
+    # Parse from the right so label names can contain underscores and suffixes.
+    pattern = r"(.+)_(x|y|labeler|point_time|action)" if per_cam else r"c(\d+)_(.+)_(x|y|labeler|point_time|action)"
+    groups = {}
+    n_cams = len(tables) if per_cam else 0
+    for table_idx, table in enumerate(tables):
+        if not table.columns.is_unique or not table.index.is_unique:
+            raise ValueError("DataFrame columns and frame numbers must be unique")
+        for frame in table.index:
+            if not isinstance(frame, (int, np.integer, float, np.floating)) or not np.isfinite(frame) or frame != int(frame):
+                raise ValueError(f"Frame numbers must be integers: {frame!r}")
+        for column in table.columns:
+            match = re.fullmatch(pattern, str(column))
+            if match is None:
+                raise ValueError(f"Invalid label column: {column!r}")
+            if per_cam:
+                cam, (name, field) = table_idx, match.groups()
+            else:
+                cam, name, field = match.groups()
+                cam = int(cam)
+            n_cams = max(n_cams, cam + 1)
+            fields = groups.setdefault((name, cam), {})
+            if field in fields:
+                raise ValueError(f"Duplicate {field} column for {name}, camera {cam}")
+            fields[field] = table[column]
+            labels["labels"].setdefault(name, {})
+
+    for (name, cam), fields in groups.items():
+        if "x" not in fields or "y" not in fields:
+            raise ValueError(f"Both x and y columns are required for {name}, camera {cam}")
+        values = pd.DataFrame(fields)
+        values = values.loc[values.notna().any(axis=1)]
+        for frame, row in values.iterrows():
+            frame = int(frame)
+            if frame not in labels["labels"][name]:
+                labels["labels"][name][frame] = {
+                    "coords": np.full((n_cams, 2), np.nan),
+                    "labeler": np.full(n_cams, labeler_id("_unmarked"), dtype=int),
+                    "point_times": np.zeros(n_cams, dtype=float),
+                }
+            entry = labels["labels"][name][frame]
+            entry["coords"][cam] = [row["x"], row["y"]]
+            value = row.get("labeler", np.nan)
+            entry["labeler"][cam] = (labeler_id(labeler) if pd.isna(value)
+                                      else checked_id(value, labels["labeler_list"], "labeler"))
+            value = row.get("point_time", np.nan)
+            entry["point_times"][cam] = point_time if pd.isna(value) else value
+            value = row.get("action", np.nan)
+            if not pd.isna(value):
+                action_id = checked_id(value, labels["action_list"], "action")
+                if "action" not in entry:
+                    entry["action"] = np.full(n_cams, np.nan)
+                entry["action"][cam] = action_id
+
+    for frames in labels["labels"].values():
+        for entry in frames.values():
+            if "action" in entry:
+                missing = np.isnan(entry["action"])
+                if missing.any():
+                    if "create" not in labels["action_list"]:
+                        labels["action_list"].append("create")
+                    entry["action"][missing] = labels["action_list"].index("create")
+                entry["action"] = entry["action"].astype(int)
+    return labels
+
+
+def to_csv(labels, file_path, *, per_cam=False):
+    """Write tab-separated labels with # metadata comments.
+
+    file_path may be a path or a writable text stream. With per_cam=True,
+    supply one path/stream per camera, in camera order.
+    """
+    data = to_pandas(labels, per_cam=per_cam)
+    tables = data if per_cam else [data]
+    if per_cam:
+        if not isinstance(file_path, (list, tuple)) or len(file_path) != len(tables):
+            raise ValueError("Supply one output path/stream per camera")
+        targets = file_path
+    else:
+        targets = [file_path]
+    for table, target in zip(tables, targets):
+        def write(handle):
+            for key in ("version", "labeler_list", "action_list"):
+                handle.write(f"# {key}: {json.dumps(table.attrs[key])}\n")
+            table.to_csv(handle, sep="\t", index_label="frame", na_rep="nan")
+
+        if hasattr(target, "write"):
+            write(target)
+        else:
+            with open(target, "w", encoding="utf-8", newline="") as handle:
+                write(handle)
+
+
+def from_csv(file_path, *, per_cam=False, labeler="_unknown", point_time=0,
+             labeler_list=None, action_list=None):
+    """Read TSV labels written by to_csv, including # metadata comments.
+
+    A list of paths/readable text streams implies per_cam=True. Files without
+    metadata or optional columns use the same defaults as from_pandas.
+    """
+    import pandas as pd
+
+    is_list = isinstance(file_path, (list, tuple))
+    sources = file_path if is_list else [file_path]
+    tables = []
+    for source in sources:
+        def read(handle):
+            metadata = {}
+            line = handle.readline()
+            while line.startswith("#"):
+                key, separator, value = line[1:].strip().partition(":")
+                if separator and key in ("version", "labeler_list", "action_list"):
+                    metadata[key] = json.loads(value)
+                line = handle.readline()
+            # Strip only leading comments: # can also be part of a label name.
+            table = pd.read_csv(io.StringIO(line + handle.read()), sep="\t", index_col=0)
+            table.attrs = metadata
+            return table
+
+        if hasattr(source, "read"):
+            tables.append(read(source))
+        else:
+            with open(source, encoding="utf-8", newline="") as handle:
+                tables.append(read(handle))
+
+    return from_pandas(tables if is_list else tables[0], per_cam=per_cam,
+                       labeler=labeler, point_time=point_time,
+                       labeler_list=labeler_list, action_list=action_list)
 
 
 def write_label_yaml(file_handle, labels, yml_write_direct=False):
