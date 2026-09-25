@@ -37,6 +37,8 @@ def convert(img, module, dtype=None):
         return img
     if isinstance(img, list):
         return [convert(i, module, dtype=dtype) for i in img]
+    if isinstance(img, dict):
+        return {k: convert(v, module, dtype=dtype) for k, v in img.items()}
     t = type(img)
     if inspect.getmodule(t) == module:
         return img
