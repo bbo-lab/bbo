@@ -591,6 +591,7 @@ def to_array(labels,
 
 def to_numpy(labels,
              extract_frame_idxs=None, extract_labels=None,  # Extract only these parts of data
+             extract_inexistent_labels=False,
              time_bases=None,  # Rearrange after these times for cams
              time_bases_complete=False,  # Supplied time bases are the full time bases of the video
              strip_nans=False,  # Remove all times that are fully nan
@@ -612,7 +613,7 @@ def to_numpy(labels,
     if extract_labels is None:
         extract_labels = labeled_labels
     else:
-        assert set(extract_labels) <= set(labeled_labels), \
+        assert extract_inexistent_labels or set(extract_labels) <= set(labeled_labels), \
             f"Requested to extract inexistant labels {extract_labels}, got {labeled_labels}."
 
     scalar_label = isinstance(extract_labels, str)
