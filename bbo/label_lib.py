@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import numpy as np
 import yaml
+from typing_extensions import Iterable
+
 from bbo.exceptions import NoDataException
 import re
 import logging
@@ -151,7 +153,7 @@ def labels_to_acm(labels):
     return acmlabels
 
 
-def load(file_path, load_formats=("yml"), load_version=None, load_npz=None, v0_format=None):
+def load(file_path, load_formats:Iterable[str]=("yml",), load_version:Iterable[str]|None=None, load_npz=None, v0_format=None):
     logger.log(logging.DEBUG, f"Loading {file_path}")
 
 
@@ -409,7 +411,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
     if force_num_cams is not None and data_shape[0] != force_num_cams:
         logger.log(logging.WARN, f"force_num_cams {force_num_cams} != data_shape[0] {data_shape[0]}, will force data_shape to {force_num_cams}")
         data_shape = (force_num_cams, *data_shape[1:])
-    default_action = np.ones(data_shape[0], dtype=int) * index_create
+    default_action = np.full(data_shape[0], fill_value=index_create, dtype=int)
 
     for i_labels, labels in enumerate(labels_list):
         logger.log(logging.INFO, f"Merging {i_labels + 1}/{len(labels_list) - 1} label sources")
@@ -425,7 +427,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                 if fr_idx not in target_labels["labels"][ln]:
                     target_labels["labels"][ln][fr_idx] = {
                         'coords': np.full(data_shape, np.nan),
-                        'labeler': np.ones(data_shape[0], dtype=np.uint16) * index_unmarked,
+                        'labeler': np.full(data_shape[0], fill_value=index_unmarked, dtype=np.uint16),
                         'point_times': np.zeros(data_shape[0], dtype=float)
                     }
 
@@ -445,7 +447,7 @@ def merge(labels_list: list, target_file=None, overwrite=False, yml_only=False, 
                 try:
                     transfer_mask &= source_entry.get("action", default_action) == index_create
                 except Exception as e:
-                    logger.log(logging.ERROR, f"Error in {ln} {fr_idx} {source_entry.get('action', default_action)} {default_action} {index_create}")
+                    logger.log(logging.ERROR, f"Error in {ln} {fr_idx} {source_entry.get('action', default_action)} {default_action} {index_create} {i_labels}")
                     raise e
                 # Target time is older. We do <= to be able to do in place corrections in the merged files.
                 transfer_mask &= target_entry["point_times"] <= source_entry["point_times"]
@@ -610,15 +612,14 @@ def to_numpy(labels,
             f"Requested to extract up to index {extract_frame_idxs[-1]}, got max {labeled_frame_idxs[-1]}"
 
     labeled_labels = get_labels(labels)
+    scalar_label = isinstance(extract_labels, str)
     if extract_labels is None:
         extract_labels = labeled_labels
     else:
+        if scalar_label:
+            extract_labels = (extract_labels,)
         assert extract_inexistent_labels or set(extract_labels) <= set(labeled_labels), \
             f"Requested to extract inexistant labels {extract_labels}, got {labeled_labels}."
-
-    scalar_label = isinstance(extract_labels, str)
-    if scalar_label:
-        extract_labels = (extract_labels,)
 
     if time_bases is None:
         time_bases = [extract_frame_idxs] * cams_n
@@ -714,7 +715,7 @@ def to_pandas(labels, *, per_cam=False):
 
 
 def from_pandas(data, *, per_cam=False, labeler="_unknown", point_time=0,
-                labeler_list=None, action_list=None):
+                labeler_list=None, action_list=None, unknown_column_action="raise"):
     """Convert a DataFrame, or a list of camera DataFrames, to v1 labels.
 
     The index contains integer frame numbers. Lists imply per_cam=True;
@@ -779,7 +780,15 @@ def from_pandas(data, *, per_cam=False, labeler="_unknown", point_time=0,
         for column in table.columns:
             match = re.fullmatch(pattern, str(column))
             if match is None:
-                raise ValueError(f"Invalid label column: {column!r}")
+                if unknown_column_action == "ignore":
+                    continue
+                elif unknown_column_action == "warn":
+                    logger.warning(f"Ignoring unrecognized column: {column!r}")
+                    continue
+                elif unknown_column_action == "raise":
+                    raise ValueError(f"Invalid label column: {column!r}")
+                else:
+                    raise AttributeError(f"Invalid unknown_column_action: {unknown_column_action!r}")
             if per_cam:
                 cam, (name, field) = table_idx, match.groups()
             else:
@@ -1211,16 +1220,16 @@ def read_label_yaml_v1(file):
 
                 if current_prop == "lr":
                     list_part = line.partition(":")[2].strip()[1:-1].strip()
-                    labels[current_key][current_label][current_frame]["labeler"] = np.array(
-                        [int(x) for x in (list_part.split(",") if list_part else [])])
+                    labels[current_key][current_label][current_frame]["labeler"] = np.fromstring(
+                        list_part, dtype=int, sep=',') if list_part else np.array([], dtype=int)
                 elif current_prop == "pts":
                     list_part = line.partition(":")[2].strip()[1:-1].strip()
-                    labels[current_key][current_label][current_frame]["point_times"] = np.array(
-                        [float(x) for x in (list_part.split(",") if list_part else [])])
+                    labels[current_key][current_label][current_frame]["point_times"] = np.fromstring(
+                        list_part, dtype=float, sep=',') if list_part else np.array([], dtype=float)
                 elif current_prop == "a":
                     list_part = line.partition(":")[2].strip()[1:-1].strip()
-                    labels[current_key][current_label][current_frame]["action"] = np.array(
-                        [int(x) for x in (list_part.split(",") if list_part else [])])
+                    labels[current_key][current_label][current_frame]["action"] = np.fromstring(
+                        list_part, dtype=int, sep=',') if list_part else np.array([], dtype=int)
                 elif current_prop == "crds":
                     if len(line_parts) == 1:
                         labels[current_key][current_label][current_frame]["coords"] = []
