@@ -21,7 +21,7 @@ yaml.add_representer(np.ndarray, ndarray_representer)
 version = "1.0"
 
 
-def update(labels, labeler="_unknown", do_purge_nans=False):
+def update(labels, labeler="_unknown", do_purge_nans=False, incomplete_action="warn"):
     # Old ACM-style labels
     if all([isinstance(k, int) for k in labels.keys()]):
         return acm_to_labels(labels, labeler)
@@ -72,7 +72,7 @@ def update(labels, labeler="_unknown", do_purge_nans=False):
 
     if Version(labels["version"]) < Version("1.0"):
         labels["action_list"] = ["create", "delete"]
-        labels = convert_v0_to_v1(labels)
+        labels = convert_v0_to_v1(labels, incomplete_action=incomplete_action)
 
     # Bring labeler list in shape (add specials etc.)
     make_global_lists([labels])
@@ -195,7 +195,7 @@ def load(file_path, load_npz=False, v0_format=None):
     return labels
 
 
-def convert_v0_to_v1(labels):
+def convert_v0_to_v1(labels, incomplete_action="warn"):
     if Version(labels["version"]) >= Version("1.0"):
         return labels
 
@@ -223,7 +223,14 @@ def convert_v0_to_v1(labels):
                 labels_new['labels'][ln][fr_idx]['labeler'] = labels['labeler'][ln][fr_idx]
                 labels_new['labels'][ln][fr_idx]['point_times'] = labels['point_times'][ln][fr_idx]
         except:
-            logger.log(logging.WARN, "Additional info was not found in file")
+            if incomplete_action == "warn":
+                logger.log(logging.WARN, "Additional info was not found in data")
+            elif incomplete_action == "raise":
+                raise ValueError("Additional info was not found in data")
+            elif incomplete_action == "ignore":
+                continue
+            else:
+                raise AttributeError("Unknown incomplete_action value")
 
     return update(labels_new)
 
@@ -272,13 +279,14 @@ def load_raw_yaml(file_path: Path):
 
 def save(file_path, labels,
          yml_only=False, v0_format=False,
-         yml_write_direct=False):
+         yml_write_direct=False,
+         incomplete_action="warn"):
     # if v0_format is None:
     #     v0_format = True
     #     logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
     #                    "Behavior will be changed after publication of bird paper. Use v0_format=True to "
     #                    "suppress this message.")
-    labels = update(labels)
+    labels = update(labels, incomplete_action=incomplete_action)
 
     if v0_format:
         labels = convert_v1_to_v0(labels)
