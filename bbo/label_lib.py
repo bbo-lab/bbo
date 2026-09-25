@@ -151,37 +151,54 @@ def labels_to_acm(labels):
     return acmlabels
 
 
-def load(file_path, load_npz=False, v0_format=None):
+def load(file_path, load_formats=("yml"), load_version=None, load_npz=None, v0_format=None):
     logger.log(logging.DEBUG, f"Loading {file_path}")
-    if v0_format is None:
-        v0_format = True
-        logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
-                       "Behavior will be changed after publication of bird paper. Use v0_format=True to "
-                       "suppress this message.")
+
+
+    if load_version is None:
+        load_version = "v0"  # Default will change in coming versions
+        if v0_format is None:
+            load_version = "v0"
+            logger.warning("DEPRECATED FORMAT: For new implementations, use v0_format=False. "
+                           "Behavior will be changed after publication of bird paper. Use v0_format=True to "
+                           "suppress this message.")
+        elif not v0_format:
+            load_version = "v1"
+
+    if load_npz is not None:
+        logger.warning("DEPRECATED FORMAT: For new implementations, use load_formats instead of load_npz."
+                       "Behavior will be changed after publication of bird paper.")
+        load_formats = load_formats + ("npz")
 
     if isinstance(file_path, str):
         file_path = Path(file_path)
 
-    if file_path.with_suffix(".yml").is_file() and not (load_npz and file_path.suffix == ".npz"):
-        file_path = file_path.with_suffix(".yml")
-        try:
-            with open(file_path.as_posix(), 'r') as f:
-                labels = read_label_yaml(f)
-        except Exception as e:
-            # Fall back to very slow pyyaml reader
-            logger.log(logging.WARN, "WARNING: Fallback to pyYAML")
-            logger.log(logging.WARN, e)
-            raise e
-            labels = load_raw_yaml(file_path)
-    elif file_path.with_suffix(".npz").is_file():
-        if not load_npz:
-            raise FileNotFoundError(f"There should not be any bbo-labelgui npzs without yml file left. "
-                                    "Check if this is an error (e.g. yml file intentionally deleted).")
-        file_path = file_path.with_suffix(".npz")
-        labels = np.load(file_path, allow_pickle=True)["arr_0"][()]
-        logger.log(logging.WARN, f"Loaded deprecated npz file! {file_path.as_posix()}")
-    else:
-        raise FileNotFoundError(file_path.as_posix())
+    labels = None
+    for format in load_formats:
+        load_file = file_path.with_suffix(f".{format}")
+        if not load_file.is_file():
+            continue
+
+        if format == "yml":
+            try:
+                with open(load_file.as_posix(), 'r') as f:
+                    labels = read_label_yaml(f)
+            except Exception as e:
+                # Fall back to very slow pyyaml reader
+                logger.log(logging.WARN, "WARNING: Fallback to pyYAML")
+                logger.log(logging.WARN, e)
+                raise e
+                labels = load_raw_yaml(load_file)
+        elif format == "npz":
+            labels = np.load(load_file, allow_pickle=True)["arr_0"][()]
+            logger.log(logging.WARN, f"Loaded deprecated npz file! {file_path.as_posix()}")
+        elif format == "csv":
+            labels = from_csv(load_file)
+        else:
+            raise ValueError(f"Unknown format: {format}")
+
+    if labels is None:
+        raise FileNotFoundError(f"{str(file_path)} with formats {load_formats}")
 
     try:
         labels = update(labels, labeler=file_path.parent.parent.stem)
@@ -189,7 +206,7 @@ def load(file_path, load_npz=False, v0_format=None):
         logger.log(logging.ERROR, "Did not find expected keys in ", file_path.as_posix())
         raise e
 
-    if v0_format:
+    if load_version == "v0":
         labels = convert_v1_to_v0(labels)
 
     return labels
@@ -1228,7 +1245,6 @@ def read_label_yaml_v1(file):
                 frame["coords"] = np.asarray(frame["coords"], dtype=float).reshape(-1, 2)
 
     return labels
-
 
 def read_version(file_handle):
     pos = file_handle.tell()
