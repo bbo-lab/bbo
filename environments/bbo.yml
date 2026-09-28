@@ -26,5 +26,7 @@ dependencies:
       - mpmath
       - pyyaml
       - scipy
+      - filelock
+      - decord
       - opencv-python-headless  # conda version brings incompatible qt
       # - cupy-cuda12x[ctk]  # Does not require CUDA Toolkit, with CUDA, remove ctk
