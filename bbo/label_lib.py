@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import numpy as np
 import yaml
-from typing_extensions import Iterable
+from typing import Iterable
 
 from bbo.exceptions import NoDataException
 import re
