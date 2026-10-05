@@ -17,6 +17,7 @@ dependencies:
   - numba
   - jupyterlab
   - pyqtgraph
+  - pytables
   - pip:
       - bbo-bbo
       - bbo-calibcamlib
