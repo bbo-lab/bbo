@@ -75,6 +75,10 @@ def update(labels, labeler="_unknown", do_purge_nans=False, incomplete_action="w
     if Version(labels["version"]) < Version("1.0"):
         labels["action_list"] = ["create", "delete"]
         labels = convert_v0_to_v1(labels, incomplete_action=incomplete_action)
+        # convert_v0_to_v1 already ran update on the converted labels
+        if do_purge_nans:
+            purge_nans(labels)
+        return labels
 
     # Bring labeler list in shape (add specials etc.)
     make_global_lists([labels])
@@ -556,16 +560,22 @@ def make_global_lists(labels_list):
     for labels in labels_list:
         if labels is None:
             continue
+        labeler_remap = np.array([labeler_list_all.index(lr) for lr in labels["labeler_list"]], dtype=int)
+        action_remap = np.array([action_list_all.index(a) for a in labels["action_list"]], dtype=int)
         for ln in labels["labels"]:
             for fr_idx in labels['labels'][ln]:
-                for i, labeler_idx in enumerate(labels['labels'][ln][fr_idx]["labeler"]):
-                    labeler = labels["labeler_list"][labeler_idx]
-                    labels['labels'][ln][fr_idx]["labeler"][i] = labeler_list_all.index(labeler)
-                for i, action_idx in enumerate(labels['labels'][ln][fr_idx].get("action", ())):
-                    action = labels["action_list"][action_idx]
-                    labels['labels'][ln][fr_idx]["action"][i] = action_list_all.index(action)
+                fr_dict = labels['labels'][ln][fr_idx]
+                remap_indices(fr_dict["labeler"], labeler_remap)
+                if "action" in fr_dict:
+                    remap_indices(fr_dict["action"], action_remap)
         labels["labeler_list"] = labeler_list_all.copy()
         labels["action_list"] = action_list_all.copy()
+
+
+def remap_indices(idxs, remap):
+    # In place, idxs may be ndarray or list
+    if len(idxs) > 0:
+        idxs[:] = remap[np.asarray(idxs, dtype=int)].tolist()
 
 
 def get_data_shape(labels):
@@ -909,7 +919,7 @@ def write_label_yaml(file_handle, labels, yml_write_direct=False):
         if Version(labels["version"]) >= Version("1.0")\
         else write_label_yaml_v0
 
-    if write_label_yaml:
+    if yml_write_direct:
         write_label_func(file_handle, labels)
         return
 
@@ -1086,83 +1096,45 @@ def read_label_yaml_v0(file):
     return labels
 
 
+def format_yaml_list(values):
+    if isinstance(values, (np.ndarray, list, tuple)):
+        return ", ".join(map(str, np.asarray(values).tolist()))
+    return str(values)
+
+
 # pyyaml is WAY too slow for large files
+# Lines are collected in a list and written at once, converting arrays via tolist() avoids slow
+# per-element numpy scalar operations
 def write_label_yaml_v1(file_handle, labels):
-
-    f = file_handle
-
     if "labeler" in labels:
         labels = convert_v0_to_v1(labels)
 
     yi = 2 * " "  # yaml_indent
 
-    f.write("version: ")
-    f.write(str(labels["version"]))
-    f.write("\n")
+    out = [
+        f"version: {labels['version']}\n",
+        f"labeler_list: [{', '.join(labels['labeler_list'])}]\n",
+        f"action_list: [{', '.join(labels['action_list'])}]\n",
+        "labels:\n",
+    ]
+    app = out.append
 
-    f.write("labeler_list: [")
-    f.write(", ".join(labels["labeler_list"]))
-    f.write("]\n")
-
-    f.write("action_list: [")
-    f.write(", ".join(labels["action_list"]))
-    f.write("]\n")
-
-    f.write("labels:\n")
-    for ln in labels["labels"]:
-        ln_dict = labels["labels"][ln]
-        f.write(yi)
-        f.write(ln)
+    for ln, ln_dict in labels["labels"].items():
         if len(ln_dict) == 0:
-            f.write(": {}\n")
-        else:
-            f.write(":\n")
-            for fr_idx in ln_dict:
-                fr_dict = ln_dict[fr_idx]
-                f.write(2 * yi)
-                f.write(str(fr_idx))
-                f.write(":\n")
-                # coords
-                f.write(3 * yi)
-                f.write("crds:\n")
-                for row in fr_dict["coords"]:
-                    f.write(3 * yi)
-                    f.write("- [")
-                    if np.isnan(row[0]):
-                        f.write(".nan")
-                    else:
-                        f.write(str(row[0]))
-                    f.write(", ")
-                    if np.isnan(row[1]):
-                        f.write(".nan")
-                    else:
-                        f.write(str(row[1]))
-                    f.write("]\n")
-                # labeler
-                f.write(3 * yi)
-                f.write("lr: [")
-                if isinstance(fr_dict["labeler"], np.ndarray):
-                    f.write(", ".join([str(f) for f in fr_dict["labeler"]]))
-                else:
-                    f.write(str(fr_dict["labeler"]))
-                f.write("]\n")
-                # point_times
-                f.write(3 * yi)
-                f.write("pts: [")
-                if isinstance(fr_dict["point_times"], np.ndarray):
-                    f.write(", ".join([str(t) for t in fr_dict["point_times"]]))
-                else:
-                    f.write(str(fr_dict["point_times"]))
-                f.write("]\n")
-                # action
-                if "action" in fr_dict:
-                    f.write(3 * yi)
-                    f.write("a: [")
-                    if isinstance(fr_dict["action"], np.ndarray):
-                        f.write(", ".join([str(f) for f in fr_dict["action"]]))
-                    else:
-                        f.write(str(fr_dict["action"]))
-                    f.write("]\n")
+            app(f"{yi}{ln}: {{}}\n")
+            continue
+        app(f"{yi}{ln}:\n")
+        for fr_idx, fr_dict in ln_dict.items():
+            app(f"{2 * yi}{fr_idx}:\n{3 * yi}crds:\n")
+            # x != x is True for nan only
+            for x, y in np.asarray(fr_dict["coords"]).tolist():
+                app(f"{3 * yi}- [{'.nan' if x != x else x}, {'.nan' if y != y else y}]\n")
+            app(f"{3 * yi}lr: [{format_yaml_list(fr_dict['labeler'])}]\n")
+            app(f"{3 * yi}pts: [{format_yaml_list(fr_dict['point_times'])}]\n")
+            if "action" in fr_dict:
+                app(f"{3 * yi}a: [{format_yaml_list(fr_dict['action'])}]\n")
+
+    file_handle.write("".join(out))
 
 
 def read_label_yaml_v1(file):
