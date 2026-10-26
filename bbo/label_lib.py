@@ -319,13 +319,19 @@ def save(file_path, labels,
 
     os.makedirs(file_path.parent.as_posix(), exist_ok=True)
 
+    save_files = []
+
     if not yml_only:
         # We still save npz for a while in case there is an issue with yml. This is ABSOLUTELY DEPRECATED
         # and should not be used in any circumstance except for emergencies with the yml files.
         np.savez(file_path.with_suffix(".npz").as_posix(), labels)
+        save_files.append(file_path.with_suffix(".npz"))
 
     with open(file_path.with_suffix(".yml").as_posix(), 'w') as f:
         write_label_yaml(f, labels, yml_write_direct=yml_write_direct)
+        save_files.append(file_path.with_suffix(".yml"))
+
+    return save_files
 
 
 def get_labels(labels, allow_empty=False):
